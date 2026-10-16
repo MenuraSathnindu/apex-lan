@@ -33,3 +33,38 @@ body {
 .net-status[data-state='disconnected'] {
   color: #ff7b72;
 }
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.hud-speed {
+  position: absolute;
+  right: 24px;
+  bottom: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-speed-value {
+  font-size: 56px;
+  font-weight: 700;
+}
+
+.hud-speed-unit {
+  margin-left: 6px;
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.hud-help {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.85;
+}

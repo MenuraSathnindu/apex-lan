@@ -12,7 +12,8 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
-    // three (and rapier later) are big single deps; splitting buys nothing on LAN.
-    chunkSizeWarningLimit: 2000,
+    // three + rapier-compat (WASM inlined as base64, ~3.5 MB) are big single deps;
+    // splitting buys nothing over LAN. ~1.8 MB gzipped.
+    chunkSizeWarningLimit: 6000,
   },
 });
