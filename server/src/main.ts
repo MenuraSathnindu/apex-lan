@@ -81,7 +81,10 @@ http.listen(port, '0.0.0.0', () => {
   const ips = lanAddresses();
   console.log(`\napex-lan server listening on :${port}${isDev ? ' (dev — join via Vite)' : ''}`);
   console.log(`  Local:   http://localhost:${joinPort}`);
-  for (const ip of ips) console.log(`  Join at: http://${ip}:${joinPort}`);
+  for (const { address, iface, virtual } of ips) {
+    const url = `http://${address}:${joinPort}`;
+    console.log(`  ${virtual ? 'Other:  ' : 'Join at:'} ${url.padEnd(28)} (${iface}${virtual ? ', probably VPN/VM' : ''})`);
+  }
   if (ips.length === 0) console.log('  (no LAN IPv4 address found — are you on Wi-Fi?)');
   console.log('');
 });
