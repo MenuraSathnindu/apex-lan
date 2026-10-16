@@ -1,15 +1,19 @@
 import * as THREE from 'three';
 import {
+  APEX_PARK,
+  ASSETS,
   CAR,
-  addStaticBoxes,
-  createTestGround,
+  CAR_MODEL,
+  FIXED_DT,
+  addTrackColliders,
+  buildTrack,
   createVehicle,
   createWorld,
   initRapier,
   readWheelStates,
   stepVehicle,
   vehicleSpeed,
-  FIXED_DT,
+  type CarInput,
   type WheelState,
 } from '@apex/shared';
 import { startLoop } from './core/loop.ts';
@@ -17,14 +21,19 @@ import { createInputController } from './input/inputController.ts';
 import { connect } from './net/socket.ts';
 import { createBoxCarModel } from './render/boxCarModel.ts';
 import { CameraRig } from './render/cameraRig.ts';
-import { CarView } from './render/carView.ts';
-import { createScene } from './render/scene.ts';
+import { CarView, type CarModel } from './render/carView.ts';
+import { loadGltfCarModel } from './render/gltfCarModel.ts';
+import { Graphics } from './render/graphics.ts';
+import { QualityManager } from './render/quality.ts';
+import { TrackView } from './render/trackView.ts';
 import { createHud } from './ui/hud.ts';
+import { createLoadingScreen } from './ui/loading.ts';
 import { createNetStatus, type ConnState } from './ui/netStatus.ts';
+import { createSettings } from './ui/settings.ts';
 
-const SPAWN = { position: { x: 0, y: 1.2, z: 0 }, yaw: 0 };
+const loading = createLoadingScreen(document.querySelector<HTMLElement>('#loading')!);
 
-// --- Networking status (gameplay is still local in phase 1).
+// --- Networking status (gameplay is still local until phase 3).
 const status = createNetStatus(document.querySelector<HTMLElement>('#net-status')!);
 let connState: ConnState = 'connecting';
 let playerCount = 0;
@@ -61,17 +70,37 @@ connect({
 
 // --- Physics.
 await initRapier();
+const track = buildTrack(APEX_PARK);
 const world = createWorld();
-const boxes = createTestGround();
-addStaticBoxes(world, boxes);
-const car = createVehicle(world, SPAWN);
+addTrackColliders(world, track);
+const car = createVehicle(world, track.spawnGrid[0]!);
 
-// --- Rendering.
-const view = createScene(document.querySelector<HTMLCanvasElement>('#game')!, boxes);
-const carView = new CarView(createBoxCarModel(CAR, 0xd7263d));
-view.scene.add(carView.root);
-const cameraRig = new CameraRig(view.camera);
+// --- Graphics + assets (each asset falls back to a procedural version if missing).
+const gfx = new Graphics(document.querySelector<HTMLCanvasElement>('#game')!);
+const quality = new QualityManager();
+const [trackView, carModel] = await Promise.all([
+  TrackView.create(track),
+  loadGltfCarModel(ASSETS.car, CAR, CAR_MODEL.paint.color).catch((err: unknown): CarModel => {
+    console.warn(`[assets] Car model not loaded from /${ASSETS.car} — using the placeholder box car. See docs/ASSETS.md.`, err);
+    return createBoxCarModel(CAR, CAR_MODEL.paint.color);
+  }),
+  gfx.environment.load(),
+]);
+gfx.scene.add(trackView.group);
+const carView = new CarView(carModel);
+gfx.scene.add(carView.root);
+
+const applyQuality = () => {
+  gfx.applyQuality(quality.level, quality.settings);
+  trackView.applyQuality(quality.settings);
+  carView.setGlassTransmission(quality.settings.glassTransmission);
+};
+quality.onChange(applyQuality);
+applyQuality();
+
+const cameraRig = new CameraRig(gfx.camera);
 const hud = createHud(document.querySelector<HTMLElement>('#hud')!);
+createSettings(document.querySelector<HTMLElement>('#settings')!, quality);
 const input = createInputController();
 
 // Chassis pose at the previous and current tick; frames render in between.
@@ -82,6 +111,7 @@ const currQuat = new THREE.Quaternion();
 const renderPos = new THREE.Vector3();
 const renderQuat = new THREE.Quaternion();
 const wheels: WheelState[] = [];
+let lastInput: CarInput | null = null;
 
 const capturePose = () => {
   const t = car.body.translation();
@@ -93,11 +123,21 @@ capturePose();
 prevPos.copy(currPos);
 prevQuat.copy(currQuat);
 
+// Compile all shaders up front so the first frames don't stutter.
+await gfx.renderer.compileAsync(gfx.scene, gfx.camera);
+loading.hide();
+
+if (import.meta.env.DEV) {
+  // Debug handle for poking at the scene from the browser console.
+  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView } });
+}
+
 startLoop({
   step() {
     prevPos.copy(currPos);
     prevQuat.copy(currQuat);
-    stepVehicle(car, input.sample(), FIXED_DT);
+    lastInput = input.sample();
+    stepVehicle(car, lastInput, FIXED_DT);
     world.step();
     capturePose();
   },
@@ -107,11 +147,14 @@ startLoop({
     readWheelStates(car, wheels);
     carView.update(renderPos, renderQuat, wheels);
 
-    if (input.consumeCameraCycle()) cameraRig.cycle();
     const speed = vehicleSpeed(car);
+    carView.setBraking(!!lastInput && ((lastInput.brake > 0 && speed > 0.5) || lastInput.handbrake));
+
+    if (input.consumeCameraCycle()) cameraRig.cycle();
     cameraRig.update(frameDt, renderPos, renderQuat, speed);
-    view.focusShadows(renderPos);
+    gfx.environment.follow(renderPos);
     hud.update(speed, cameraRig.mode, input.gamepadConnected);
-    view.render();
+    quality.frame(frameDt);
+    gfx.render(frameDt);
   },
 });
