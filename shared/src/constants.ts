@@ -15,3 +15,6 @@ export const INTERP_DELAY_MS = 100;
 export const PING_INTERVAL_MS = 1000;
 
 export const MAX_PLAYERS = 8;
+
+/** Fixed physics timestep (s). */
+export const FIXED_DT = 1 / TICK_RATE;
