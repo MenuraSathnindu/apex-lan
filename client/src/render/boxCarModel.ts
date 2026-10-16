@@ -49,5 +49,5 @@ export function createBoxCarModel(spec: CarSpec, paint: THREE.ColorRepresentatio
     return g;
   };
 
-  return { body, wheels: [wheel(), wheel(), wheel(), wheel()] };
+  return { body, wheels: [wheel(), wheel(), wheel(), wheel()], brakeLights: [tailMat] };
 }

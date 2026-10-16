@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { WheelState } from '@apex/shared';
+import { CAR_MODEL, type WheelState } from '@apex/shared';
 
 /**
  * A car's visual parts, independent of where they came from (placeholder boxes now,
@@ -13,6 +13,10 @@ import type { WheelState } from '@apex/shared';
 export interface CarModel {
   body: THREE.Object3D;
   wheels: [THREE.Object3D, THREE.Object3D, THREE.Object3D, THREE.Object3D];
+  /** Emissive materials that brighten when braking. */
+  brakeLights?: THREE.MeshStandardMaterial[];
+  /** Glass materials; quality presets switch refraction (transmission) on/off. */
+  glass?: THREE.MeshPhysicalMaterial[];
 }
 
 /** Places a CarModel from the physics pose + per-wheel state every frame. */
@@ -51,6 +55,21 @@ export class CarView {
       this.pivots[i]!.position.set(w.position.x, w.position.y, w.position.z);
       this.pivots[i]!.rotation.y = w.steer;
       this.spinners[i]!.rotation.x = w.spin;
+    }
+  }
+
+  setBraking(on: boolean): void {
+    const intensity = on ? CAR_MODEL.brakeLightOn : CAR_MODEL.brakeLightIdle;
+    for (const m of this.model.brakeLights ?? []) m.emissiveIntensity = intensity;
+  }
+
+  /** Real refraction is expensive; low/medium use plain transparency instead. */
+  setGlassTransmission(enabled: boolean): void {
+    for (const m of this.model.glass ?? []) {
+      m.transmission = enabled ? 1 : 0;
+      m.transparent = !enabled;
+      m.opacity = enabled ? 1 : 0.45;
+      m.needsUpdate = true;
     }
   }
 
