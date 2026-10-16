@@ -3,3 +3,10 @@ dist/
 *.log
 .DS_Store
 .vite/
+
+# Downloaded art assets (see docs/ASSETS.md, `npm run assets`)
+client/public/hdri/
+client/public/textures/
+client/public/models/
+# Copied from three by the Vite plugin
+client/public/draco/

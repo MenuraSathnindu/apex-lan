@@ -13,7 +13,8 @@
     "start": "npm run start -w @apex/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
-    "handling": "node node_modules/tsx/dist/cli.mjs scripts/handling-report.ts"
+    "handling": "node node_modules/tsx/dist/cli.mjs scripts/handling-report.ts",
+    "assets": "node scripts/download-assets.mjs"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
