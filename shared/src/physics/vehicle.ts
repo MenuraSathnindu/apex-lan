@@ -1,6 +1,7 @@
 import type { CarInput } from '../input.ts';
-import { CAR, type CarSpec, type Vec3Like } from '../tuning.ts';
+import { CAR, type CarSpec, type SurfaceKind, type Vec3Like } from '../tuning.ts';
 import { CAR_GROUPS, WHEEL_RAY_GROUPS } from './collisionGroups.ts';
+import { surfaceOf } from './surfaces.ts';
 import { RAPIER, type DynamicRayCastVehicleController, type RigidBody, type World } from './rapier.ts';
 
 /** Wheel order used everywhere: front-left, front-right, rear-left, rear-right. */
@@ -16,6 +17,7 @@ export interface SpawnPose {
 
 export interface Vehicle {
   readonly spec: CarSpec;
+  readonly world: World;
   readonly body: RigidBody;
   readonly controller: DynamicRayCastVehicleController;
   /** Current front-wheel angle (rad, positive = left), rate-limited toward the input target. */
@@ -23,6 +25,8 @@ export interface Vehicle {
   /** 0 = handbrake grip, 1 = full grip; eases back after releasing the handbrake. */
   rearGrip: number;
   upsideDownTime: number;
+  /** What each wheel touched last tick (FL, FR, RL, RR). */
+  readonly surfaces: SurfaceKind[];
 }
 
 /** Per-wheel visual state, all in chassis space. */
@@ -55,7 +59,9 @@ export function createVehicle(world: World, pose: SpawnPose, spec: CarSpec = CAR
       .setRotation(yawQuat(pose.yaw))
       .setLinearDamping(c.linearDamping)
       .setAngularDamping(c.angularDamping)
-      .setCanSleep(false),
+      .setCanSleep(false)
+      // Continuous collision so the car cannot tunnel through thin barriers at speed.
+      .setCcdEnabled(true),
   );
 
   // Explicit mass properties: solid-box inertia (scaled) around a lowered centre of mass.
@@ -93,7 +99,16 @@ export function createVehicle(world: World, pose: SpawnPose, spec: CarSpec = CAR
     controller.setWheelSideFrictionStiffness(i, front ? w.sideFrictionStiffness.front : w.sideFrictionStiffness.rear);
   }
 
-  return { spec, body, controller, steerAngle: 0, rearGrip: 1, upsideDownTime: 0 };
+  return {
+    spec,
+    world,
+    body,
+    controller,
+    steerAngle: 0,
+    rearGrip: 1,
+    upsideDownTime: 0,
+    surfaces: ['asphalt', 'asphalt', 'asphalt', 'asphalt'],
+  };
 }
 
 function yawInertia(spec: CarSpec): number {
@@ -159,15 +174,25 @@ export function stepVehicle(v: Vehicle, input: CarInput, dt: number): void {
   for (const i of REAR) {
     controller.setWheelBrake(i, input.handbrake ? Math.max(rearBrake, hb.rearBrake) : rearBrake);
     controller.setWheelSideFrictionStiffness(i, lerp(hb.rearSideFrictionStiffness, w.sideFrictionStiffness.rear, v.rearGrip));
-    controller.setWheelFrictionSlip(i, lerp(hb.rearFrictionSlip, w.frictionSlip.rear, v.rearGrip));
   }
 
-  // --- Aerodynamics as one-shot impulses (addForce would persist across steps).
+  // --- Tyre grip per wheel: base × handbrake × surface (from last tick's contact).
+  let surfaceDrag = 0;
+  for (let i = 0; i < WHEEL_COUNT; i++) {
+    const front = i < 2;
+    const base = front ? w.frictionSlip.front : lerp(hb.rearFrictionSlip, w.frictionSlip.rear, v.rearGrip);
+    const surface = spec.surfaces[v.surfaces[i]!];
+    controller.setWheelFrictionSlip(i, base * surface.grip);
+    if (controller.wheelIsInContact(i)) surfaceDrag += surface.drag;
+  }
+
+  // --- Aerodynamics + rolling/surface resistance as one-shot impulses
+  // (addForce would persist across steps).
   const vel = body.linvel();
   const vMag = Math.hypot(vel.x, vel.y, vel.z);
   if (vMag > 0.01) {
     const a = spec.aero;
-    const resist = (a.drag * vMag * vMag + a.rolling * vMag) * dt;
+    const resist = (a.drag * vMag * vMag + (a.rolling + surfaceDrag) * vMag) * dt;
     const up = rotate(body.rotation(), { x: 0, y: 1, z: 0 });
     const down = a.downforce * absSpeed * absSpeed * dt;
     body.applyImpulse(
@@ -181,6 +206,7 @@ export function stepVehicle(v: Vehicle, input: CarInput, dt: number): void {
   }
 
   controller.updateVehicle(dt, undefined, WHEEL_RAY_GROUPS);
+  for (let i = 0; i < WHEEL_COUNT; i++) v.surfaces[i] = surfaceOf(v.world, controller.wheelGroundObject(i));
 
   // --- Stability assist: steer the yaw rate toward the bicycle-model target.
   const as = spec.assist;
