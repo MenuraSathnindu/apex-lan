@@ -9,11 +9,14 @@ phase. If a decision changes, update that doc in the same change.
 ## Current phase
 
 > **Phase 0 — Scaffold: done.** **Phase 1 — Offline driving: done** (collider debug wireframe deferred).
-> **Next: Phase 2 — Track & laps.** Update this line when a phase's exit criteria are met.
+> **Pulled forward on request:** the Phase 2 *track* (spline circuit, colliders, surfaces, spawn grid) and most of
+> **Phase 6 visuals** (HDRI, GLB car, PBR track, post FX, instanced scenery, quality presets + auto-pick).
+> **Next: finish Phase 2** — checkpoints/lap counting/timing, respawn at last checkpoint, lap HUD. Then Phase 3.
+> Phase 6 leftovers: visual body roll, skid marks/smoke, real tree models. Update this line when a phase's exit criteria are met.
 
 ## Stack
 - TypeScript everywhere (strict). npm workspaces monorepo.
-- `client/` — Vite + Three.js (+ `postprocessing` from phase 6)
+- `client/` — Vite + Three.js + `postprocessing` + `n8ao` (types shimmed in `client/src/types/n8ao.d.ts`)
 - `server/` — Node 22 + `ws`
 - `shared/` — `@apex/shared`: protocol types, codec, constants, tuning, vehicle/track/lap logic. Owns the `@dimforge/rapier3d-compat` dependency (pinned exactly), so client and server always run the same Rapier build.
 
@@ -27,6 +30,7 @@ phase. If a decision changes, update that doc in the same change.
 | `npm run typecheck` | `tsc --noEmit` across all workspaces |
 | `npm test` | Vitest (shared + server) |
 | `npm run handling` | headless driving scenarios → 0–100, braking, cornering g, drift angle, rollover checks for the current tuning |
+| `npm run assets` | downloads the optional HDRI / textures / car GLB into `client/public/` (git-ignored). See `docs/ASSETS.md` |
 
 Run `npm run typecheck` and `npm test` before calling any task done. After touching car tuning or vehicle code, also run `npm run handling`.
 
@@ -44,13 +48,17 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 ## Conventions
 - **Units:** metres, seconds, kilograms, radians. **Y up. Car forward = +Z** (glTF convention), so chassis left = +X. Wheel order everywhere: FL, FR, RL, RR.
 - **Steering sign:** `CarInput.steer` +1 = right. Rapier wheel steering angle + = left, so `vehicle.ts` negates it.
-- **All gameplay tuning** (car handling, camera, input feel) lives in `shared/src/tuning.ts`. Engine/net constants (tick rate, ports, interp delay) live in `shared/src/constants.ts`. No magic numbers in logic.
-- Car visuals go through `CarModel` (`client/src/render/carView.ts`): `{ body, wheels[4] }` with wheels centred, axle along X. A GLTF loader only has to produce that shape; `CarView` places wheels from `readWheelStates()`.
+- **All tuning** lives in `shared/src/tuning.ts`: car handling + surfaces (`CAR`), `CAMERA`, `INPUT`, and graphics (`ASSETS`, `ENVIRONMENT`, `CAR_MODEL`, `QUALITY` presets, `AUTO_QUALITY`, `POST`). Engine/net constants (tick rate, ports, interp delay) live in `shared/src/constants.ts`. No magic numbers in logic.
+- Car visuals go through `CarModel` (`client/src/render/carView.ts`): `{ body, wheels[4], brakeLights?, glass? }` with wheels centred, axle along X. `gltfCarModel.ts` fits any GLB to the physics car (wheelbase scale, wheel alignment, material swap by name); `boxCarModel.ts` is the fallback.
+- **Every asset is optional.** Missing files → procedural fallback + a `[assets]` console warning. Keep it that way: the game must run straight after `git clone && npm install`.
+- Tracks are pure data (`shared/src/track/tracks.ts`) → `buildTrack()` → mesh data for the client and colliders for physics. Validate new layouts with `track.test.ts` (corner radius, self-separation).
+- Surfaces: tag colliders with `tagSurface(world, collider, 'asphalt' | 'curb' | 'grass')`. `stepVehicle` scales grip/drag per wheel from `CAR.surfaces`.
+- Colour pipeline: renderer uses `NoToneMapping`; ACES Filmic happens in the post chain (`render/post.ts`), output sRGB. Don't set `renderer.toneMapping`.
 - Files: `camelCase.ts`; types/interfaces `PascalCase`; constants `SCREAMING_SNAKE_CASE`.
 - Prefer plain functions + data objects over class hierarchies; classes are fine for stateful systems (e.g. `Simulation`, `Room`, `CarView`).
 - Three.js: dispose geometries/materials/textures when removing objects. Reuse temp `Vector3`/`Quaternion` objects in hot loops — no per-frame allocations in the render or physics loop.
 - Client UI is plain HTML/CSS overlay in `client/src/ui` (no UI framework unless agreed).
-- Assets: compressed glTF (Meshopt/Draco) + KTX2 in `client/public/assets/`; only CC0/CC-BY; record source + licence in `client/public/assets/CREDITS.md`.
+- Assets: `client/public/{hdri,textures,models}/` (git-ignored, fetched by `npm run assets`); only CC0/CC-BY; record source + licence in `client/public/CREDITS.md` and `docs/ASSETS.md`.
 - Tests: Vitest, colocated as `*.test.ts`. Test shared logic (codec round-trips, interpolation sampling, lap logic, ring buffer) and a headless server sim ("car drives forward and stays upright").
 - Commits: small, one concern each, message prefixed with phase, e.g. `p1: add handbrake drift`.
 
@@ -81,4 +89,9 @@ Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unl
 - Use one-shot `applyImpulse`, never `addForce`, for per-tick forces (aero): `addForce` persists across steps.
 - Plain `http://` on LAN is not a secure context: browsers hide gamepads there. Gamepad works for the host on `localhost`; friends get keyboard unless we add https later.
 - three r186 removed `PCFSoftShadowMap` (it falls back with a warning). Use `PCFShadowMap` + `shadow.radius`.
+- three r186: use `HDRLoader` (not `RGBELoader`). three's `package.json` isn't in its `exports`, so resolve files like `three/examples/jsm/...` directly.
+- The Draco decoder is copied into `client/public/draco/` by a Vite plugin in the **`config` hook**. In `buildStart` it was too late: Vite answered those files with `index.html`.
+- three's `Sky` shader is very bright (its example uses exposure 0.5), and the postprocessing ACES effect ignores exposure. The fallback sky is baked to a PMREM and dimmed via `backgroundIntensity` / `environmentIntensity`.
+- Flat track layers (grass 0, road +2 cm, curbs, paint) use `polygonOffset` against z-fighting at distance; camera near plane is 0.15.
+- Headless Edge with SwiftShader runs at ~4 fps, so auto quality always picks Low there. For real numbers use `--use-angle=d3d11 --enable-gpu`. The dev build exposes `window.__apex` (gfx, car, quality, carView...) for poking from the console.
 - Windows: launch tsx scripts via `node node_modules/tsx/dist/cli.mjs` (as `npm run handling` does). `npx tsx` with JSON args in Git Bash hung.

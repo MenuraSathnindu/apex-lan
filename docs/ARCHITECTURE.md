@@ -53,11 +53,11 @@ apex-lan/
 │     │  ├─ collisionGroups.ts
 │     │  └─ world.ts         # createWorld(), addStaticBoxes()
 │     ├─ track/
-│     │  ├─ testGround.ts    # phase 1 playground (ground, ramps, bumps, blocks)
-│     │  ├─ trackDef.ts      # control points, width, banking, checkpoints, spawn grid
-│     │  ├─ spline.ts        # Catmull-Rom centerline sampling (pos, tangent, normal)
-│     │  ├─ trackGeometry.ts # builds vertex/index arrays (road, barriers) — renderer-agnostic
-│     │  └─ tracks/          # concrete track definitions
+│     │  ├─ testGround.ts    # phase 1 playground (used by vehicle tests)
+│     │  ├─ spline.ts        # centripetal Catmull-Rom, even arc-length samples (pos, tangent, normal, curvature)
+│     │  ├─ track.ts         # TrackDef → BuiltTrack: road/curb/line/barrier mesh data, barrier segments, spawn grid
+│     │  ├─ tracks.ts        # concrete track definitions (APEX_PARK)
+│     │  └─ validate.ts      # min corner radius / self-separation checks (used by tests)
 │     ├─ race/
 │     │  └─ lapLogic.ts      # checkpoint progression, lap counting, race position
 │     └─ util/
@@ -96,17 +96,21 @@ apex-lan/
       │  ├─ gamepad.ts
       │  └─ inputController.ts # keyboard + gamepad -> shared CarInput
       ├─ render/
-      │  ├─ scene.ts         # renderer, lights, ground, static boxes (phase 1; split into
-      │  │                   #   renderer.ts / environment.ts in phase 6: HDRI, quality presets)
-      │  ├─ post.ts          # postprocessing composer (SMAA, bloom, AO)
-      │  ├─ carView.ts       # CarModel {body, wheels[4]} + CarView (places wheels from sim)
-      │  ├─ boxCarModel.ts   # placeholder CarModel; a gltfCarModel.ts will produce the same shape
-      │  ├─ trackView.ts     # meshes from shared trackGeometry + materials
+      │  ├─ graphics.ts      # renderer + scene + camera + resize; applies quality presets
+      │  ├─ environment.ts   # HDRI (or procedural Sky) → PMREM, sun detection, follow-shadow, fog
+      │  ├─ post.ts          # postprocessing: N8AO → bloom + ACES + vignette → SMAA
+      │  ├─ quality.ts       # QualityManager: Low/Medium/High, persisted, FPS auto-pick
+      │  ├─ textures.ts      # PBR texture sets with procedural fallbacks
+      │  ├─ carView.ts       # CarModel contract + CarView (places wheels from sim, brake lights)
+      │  ├─ gltfCarModel.ts  # GLB (Draco) → CarModel, auto-fitted to the physics car
+      │  ├─ boxCarModel.ts   # placeholder CarModel (fallback)
+      │  ├─ trackView.ts     # meshes from shared track mesh data + materials
+      │  ├─ scenery.ts       # instanced trees, tyre walls, billboards, grandstand, gantry
       │  ├─ cameraRig.ts     # chase (lag, speed-based FOV) + hood cameras
-      │  └─ effects/         # skid marks, tire smoke, sparks
+      │  └─ effects/         # (later) skid marks, tire smoke, sparks
       ├─ audio/              # WebAudio engine/tire/impact sounds
-      ├─ ui/                 # HTML/CSS overlay: lobby, HUD, results, net-debug panel
-      └─ assets/loader.ts    # GLTFLoader + DRACO/KTX2/Meshopt, preloading with progress
+      ├─ types/n8ao.d.ts     # n8ao ships no types
+      └─ ui/                 # HTML/CSS overlay: HUD, settings, loading, (later) lobby/results
 ```
 
 **Why consume `/shared` as TypeScript source:** no separate build step or watch process for
@@ -275,10 +279,14 @@ they mostly come from car-vs-car contacts, which the server resolves authoritati
   auto-reset if upside-down/on its side > 3 s. Phase 2 changes it to the last checkpoint.
 
 ### 4.4 Track physics
-- Track geometry is generated **deterministically from `trackDef`** in `/shared`, so server and
-  client build identical colliders from the same data — no collider assets to keep in sync.
-- Road surface → `trimesh` collider; barriers → trimesh or a chain of cuboids; ground plane →
-  large cuboid. Run-off surfaces (grass) get lower friction via collider friction values.
+- Track geometry is generated **deterministically from a `TrackDef`** in `/shared`, so server and
+  client build identical colliders from the same data, with no collider assets to keep in sync.
+- Layers (flat circuit): grass ground cuboid top at y = 0, road `trimesh` at +2 cm, curbs `trimesh`
+  at +3.5 cm. Wheel rays hit the highest surface. Barriers are a chain of cuboids (4 m segments,
+  slightly overlapping); the car body has CCD so it can't tunnel through them.
+- **Surfaces:** Rapier's vehicle ignores collider friction, so colliders are tagged
+  (`tagSurface`) and `stepVehicle` reads each wheel's ground collider: `CAR.surfaces` scales
+  `frictionSlip` and adds rolling drag (grass = 55% grip + heavy drag).
 - Checkpoints are sensor-free: progress is computed by projecting the car onto the spline
   (`lapLogic.ts`), which also yields race position (lap × length + distance along spline).
 
@@ -291,36 +299,49 @@ they mostly come from car-vs-car contacts, which the server resolves authoritati
 ## 5. Rendering pipeline
 
 ### 5.1 Renderer
-- `THREE.WebGLRenderer` (`antialias: false` — AA done in post), `outputColorSpace = SRGB`,
-  `toneMapping = AgX` (or ACES Filmic), physically-correct lighting (Three default since r155).
-- Pixel ratio capped by quality preset (`min(devicePixelRatio, 1.0/1.5/2.0)`).
+- `THREE.WebGLRenderer` (`antialias: false`, AA done in post), `outputColorSpace = SRGB`,
+  physically based light units (three's default since r155). `renderer.toneMapping` stays
+  `NoToneMapping`: the post chain renders into HalfFloat buffers and applies **ACES Filmic** in
+  its effect pass, so tone mapping happens once, after bloom.
+- Pixel ratio capped by quality preset (`min(devicePixelRatio, 1.0/1.25/2.0)`).
 - Render loop decoupled from physics: `requestAnimationFrame` renders interpolated state;
   own car is rendered at `lerp(prevPhysicsState, currPhysicsState, alpha)` from the fixed-step
   accumulator, plus the reconciliation visual offset.
 
 ### 5.2 Lighting & environment ("realistic look" comes mostly from here)
-- **HDRI image-based lighting:** 2k `.hdr`/`.exr` from Poly Haven (CC0) → `PMREMGenerator` →
-  `scene.environment` (reflections on car paint matter more than anything else) and as the
-  visible sky (`scene.background`, or a cheaper blurred version).
-- **Sun:** one `DirectionalLight` aligned with the HDRI sun; shadow camera **follows the
-  player's car** with a tight frustum (≈80 m), 2048² map, `PCFSoftShadowMap`. Cascaded shadow
-  maps (three `CSM` addon) only on High preset.
-- Exponential height fog for depth.
+- **HDRI image-based lighting:** 2k `.hdr` from Poly Haven (CC0), loaded with `HDRLoader`,
+  → `PMREMGenerator` → `scene.environment` (car-paint reflections matter most) and
+  `scene.background`. On load the HDRI is scanned: the **brightest pixel gives the sun
+  direction** (so shadows match the sky) and the horizon row gives the **fog colour**.
+- **No HDRI file →** three's `Sky` shader baked to a PMREM, used for background + environment,
+  dimmed with `backgroundIntensity`/`environmentIntensity` (Sky's raw output is very bright).
+- **Sun:** one `DirectionalLight`; its shadow camera **follows the player** (±25–40 m depending
+  on preset), snapped to whole shadow texels so edges don't shimmer while driving. Soft edges
+  via `PCFShadowMap` + `shadow.radius` (r186 removed `PCFSoftShadowMap`). Cascaded shadow maps
+  were skipped: one follow-shadow covers what the player sees up close, and CSM needs every
+  material patched.
+- `FogExp2` for aerial perspective.
 
 ### 5.3 Materials & assets
-- **Cars:** glTF 2.0 (CC0/CC-BY sources, licences tracked in `client/public/assets/CREDITS.md`),
-  compressed with `gltf-transform` (Meshopt or Draco geometry, KTX2/Basis textures).
-  Paint = `MeshPhysicalMaterial` with `clearcoat`; colour swapped per player. Separate wheel
-  nodes so we can spin/steer them from `wheels[]`. Emissive brake lights.
-- **Track:** road mesh from `shared/track/trackGeometry` with tiling asphalt PBR textures
-  (albedo/normal/roughness), painted kerbs, line markings via a second UV channel or decal
-  strip. Scenery (trees, grandstands, cones) via `InstancedMesh`.
-- **Effects:** skid marks (ring-buffer ribbon mesh written at wheel contact points when slip
-  is high), tire smoke (GPU-cheap sprite particles), sparks on hard impacts.
+All assets are optional with procedural fallbacks; see `docs/ASSETS.md` and `npm run assets`.
+- **Car:** any GLB (Draco OK; the decoder is served locally from `public/draco/`).
+  `gltfCarModel.ts` rotates it to +Z, scales it to the physics wheelbase, aligns its wheel
+  centroid with the physics wheels at rest, detaches the 4 wheel nodes into centred wrappers,
+  and swaps materials by name: paint → `MeshPhysicalMaterial` (metalness 1, roughness 0.45,
+  clearcoat 1), glass → `MeshPhysicalMaterial` with `transmission` (High) or plain transparency,
+  headlights/brake lights → emissive (brake lights brighten while braking and bloom).
+- **Track:** asphalt PBR (albedo/normal GL/roughness), grass PBR (tinted), red/white curbs on
+  corners (canvas texture), painted edge lines, chequered start line, concrete barriers with
+  a painted top band. Flat layers use `polygonOffset` against z-fighting.
+- **Scenery:** `InstancedMesh` trees (two kinds, per-instance colour), tyre walls on corner
+  exits, billboards on straights, plus a grandstand and start gantry. Placement is seeded
+  (identical on every client) and kept outside the barriers.
+- **Effects (later):** skid marks, tyre smoke, sparks.
 
 ### 5.4 Post-processing
-`postprocessing` (pmndrs) `EffectComposer`: **N8AO / SSAO → Bloom (subtle) → SMAA →
-tone mapping**. Optional on High: motion blur / depth-of-field in replays only.
+`postprocessing` (pmndrs) `EffectComposer` with HalfFloat buffers:
+`RenderPass → N8AOPostPass (High only, half-res) → EffectPass(Bloom, ACES ToneMapping,
+Vignette) → EffectPass(SMAA)`. The chain is rebuilt when the quality level changes.
 
 ### 5.5 Camera
 Chase camera with critically-damped spring toward a target behind & above the car, look-ahead
@@ -328,14 +349,21 @@ along velocity, speed-based FOV (60° → 75°), slight shake on high speed / im
 Alternate cameras: bumper, hood. Orbit camera in lobby.
 
 ### 5.6 Quality presets
-`low | medium | high`, auto-picked from a short FPS probe and user-overridable in settings:
+`low | medium | high` (`QUALITY` in `tuning.ts`), chosen in the settings panel (Esc / ⚙) and
+saved in `localStorage`. **Auto** (default) starts at High, skips 1.5 s of warm-up, averages
+FPS over 2.5 s and steps down while it's below 50. It never steps back up on its own.
 
 | | Low | Medium | High |
 |---|---|---|---|
-| Pixel ratio cap | 1.0 | 1.5 | 2.0 |
-| Shadows | off / 1024 | 2048 single | CSM |
-| AO / Bloom | off | bloom | AO + bloom |
-| Scenery density | 25% | 60% | 100% |
+| Pixel ratio cap | 1.0 | 1.25 | 2.0 |
+| Shadows | off | 2048, radius 3, ±35 m | 2048, radius 4, ±40 m |
+| AO / Bloom | — / — | — / bloom | N8AO (half-res) / bloom |
+| Glass | transparent | transparent | transmission |
+| Scenery density | 30% | 65% | 100% |
+| Texture anisotropy | 2 | 4 | 8 |
+
+Measured on the host laptop's GPU (headless, 720p): AO plus a 4096 shadow map was the
+expensive combination, so High uses 2048 + half-res AO.
 
 ---
 
