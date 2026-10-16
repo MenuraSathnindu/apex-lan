@@ -41,15 +41,19 @@ apex-lan/
 │  └─ src/
 │     ├─ index.ts
 │     ├─ constants.ts        # TICK_RATE, SNAPSHOT_RATE, MAX_PLAYERS, INTERP_DELAY_MS ...
+│     ├─ tuning.ts           # ALL gameplay tuning: CAR (handling), CAMERA, INPUT
+│     ├─ input.ts            # CarInput (what clients send each tick)
 │     ├─ protocol/
 │     │  ├─ messages.ts      # discriminated-union message types (C2S / S2C)
 │     │  └─ codec.ts         # encode/decode (JSON first, binary later — same API)
 │     ├─ physics/
 │     │  ├─ rapier.ts        # single place that imports & inits rapier3d-compat
-│     │  ├─ vehicle.ts       # createVehicle(world, spec) / applyInput(vehicle, input, dt)
-│     │  ├─ carSpecs.ts      # tunables per car: mass, suspension, friction, power curve
-│     │  └─ world.ts         # createWorld(), fixed-step helpers
+│     │  ├─ vehicle.ts       # createVehicle / stepVehicle / resetVehicle / readWheelStates
+│     │  ├─ handlingMetrics.ts # headless scenarios → numbers (tests + `npm run handling`)
+│     │  ├─ collisionGroups.ts
+│     │  └─ world.ts         # createWorld(), addStaticBoxes()
 │     ├─ track/
+│     │  ├─ testGround.ts    # phase 1 playground (ground, ramps, bumps, blocks)
 │     │  ├─ trackDef.ts      # control points, width, banking, checkpoints, spawn grid
 │     │  ├─ spline.ts        # Catmull-Rom centerline sampling (pos, tangent, normal)
 │     │  ├─ trackGeometry.ts # builds vertex/index arrays (road, barriers) — renderer-agnostic
@@ -71,7 +75,9 @@ apex-lan/
 │     │  ├─ simulation.ts    # Rapier world, fixed 60 Hz loop, input queue per player
 │     │  └─ player.ts
 │     └─ util/lanAddress.ts
-└─ client/                   # @apex/client — Vite + Three.js + Rapier
+├─ scripts/
+│  └─ handling-report.ts     # `npm run handling`
+└─ client/                   # @apex/client — Vite + Three.js (Rapier via @apex/shared)
    ├─ package.json
    ├─ vite.config.ts         # server.host = true, proxy /ws -> :3000
    ├─ index.html
@@ -88,14 +94,15 @@ apex-lan/
       ├─ input/
       │  ├─ keyboard.ts
       │  ├─ gamepad.ts
-      │  └─ inputState.ts    # -> shared CarInput
+      │  └─ inputController.ts # keyboard + gamepad -> shared CarInput
       ├─ render/
-      │  ├─ renderer.ts      # WebGLRenderer, tone mapping, resize, quality presets
-      │  ├─ environment.ts   # HDRI/PMREM, sun, shadows, fog
+      │  ├─ scene.ts         # renderer, lights, ground, static boxes (phase 1; split into
+      │  │                   #   renderer.ts / environment.ts in phase 6: HDRI, quality presets)
       │  ├─ post.ts          # postprocessing composer (SMAA, bloom, AO)
-      │  ├─ carView.ts       # glTF car instance, wheel spin/steer, brake lights, paint color
+      │  ├─ carView.ts       # CarModel {body, wheels[4]} + CarView (places wheels from sim)
+      │  ├─ boxCarModel.ts   # placeholder CarModel; a gltfCarModel.ts will produce the same shape
       │  ├─ trackView.ts     # meshes from shared trackGeometry + materials
-      │  ├─ camera.ts        # chase camera (spring, speed-based FOV), orbit for lobby
+      │  ├─ cameraRig.ts     # chase (lag, speed-based FOV) + hood cameras
       │  └─ effects/         # skid marks, tire smoke, sparks
       ├─ audio/              # WebAudio engine/tire/impact sounds
       ├─ ui/                 # HTML/CSS overlay: lobby, HUD, results, net-debug panel
@@ -209,16 +216,17 @@ they mostly come from car-vs-car contacts, which the server resolves authoritati
   in the README; it is the #1 "friends can't connect" cause.
 - `rapier3d-compat` ships WASM inlined as base64 → no special MIME / COOP/COEP headers needed,
   plain HTTP over LAN works (no secure-context requirement for WebGL/WebSocket/WebAudio).
-- Gamepad API needs a secure context in some browsers; keyboard is the baseline, gamepad is
-  best-effort on `http://` LAN.
+- Browsers only expose the Gamepad API to secure contexts (https / localhost). The host on
+  `localhost` gets gamepad support; friends on `http://<lan-ip>` get keyboard. Fix later with a
+  self-signed https option if needed.
 
 ---
 
 ## 4. Physics approach
 
 ### 4.1 Rapier setup
-- `@dimforge/rapier3d-compat`, **exact version pinned** in both client and server (same WASM
-  ⇒ near-identical results ⇒ fewer reconciliations).
+- `@dimforge/rapier3d-compat`, **exact version pinned** as a dependency of `@apex/shared`, so
+  client and server always load the same WASM ⇒ near-identical results ⇒ fewer reconciliations.
 - `shared/physics/rapier.ts` is the only file that imports Rapier; it exposes `initRapier()`
   (awaits `RAPIER.init()`) and re-exports the module.
 - Gravity `(0, -9.81, 0)`, fixed `dt = 1/60`, world integration parameters set once in
@@ -227,29 +235,44 @@ they mostly come from car-vs-car contacts, which the server resolves authoritati
 ### 4.2 Coordinate conventions (must stay consistent)
 - **Y up, metres, seconds, kilograms, radians.**
 - **Car forward = +Z in chassis local space** (matches glTF's +Z-forward convention), right = −X.
-- Vehicle controller: `setIndexUpAxis(1)`, `setIndexForwardAxis(2)` set explicitly — never
-  rely on defaults. Verify against the pinned Rapier version when implementing.
+- Vehicle controller: up axis 1, forward axis 2, set explicitly — Rapier's default forward
+  axis is X. In v0.21 these are property setters: `controller.indexUpAxis = 1;
+  controller.setIndexForwardAxis = 2;` (yes, the setter is really named that).
+- Steering: Rapier's positive wheel angle turns **left**; `CarInput.steer` +1 means right, so
+  `stepVehicle` negates it. Wheel rotation is positive when rolling forward.
 
 ### 4.3 Vehicle (shared/physics/vehicle.ts)
-- **Chassis:** dynamic rigid body + cuboid collider (approx. 1.8 × 0.5 × 4.2 m), mass ≈ 1200 kg.
-  **Lower the centre of mass** (collider offset upward or `setAdditionalMassProperties`) —
-  the single most important anti-rollover tweak. Small angular damping.
+- **Chassis:** dynamic rigid body + cuboid collider (1.8 × 0.6 × 4.3 m), 1200 kg, explicit
+  mass properties (`ColliderDesc.setMassProperties`) with a **lowered centre of mass** and
+  scaled box inertia. Small angular damping.
 - **Controller:** `world.createVehicleController(chassis)`; four `addWheel(connectionCs,
   directionCs=(0,-1,0), axleCs=(-1,0,0), suspensionRestLength, radius)`.
-- **Per-wheel tunables** (in `carSpecs.ts`): suspension stiffness, compression/relaxation
-  damping, max travel, max suspension force, `frictionSlip`, `sideFrictionStiffness`.
+- **Units learned from Rapier v0.21:** suspension stiffness/damping are per unit of chassis
+  mass (sag ≈ 9.81 / (4·k)); engine force is newtons; brake is impulse per tick;
+  `frictionSlip` behaves like tyre μ (1.5 ≈ 1.3 g cornering).
+- **All tunables** in `shared/src/tuning.ts` (`CAR`). `npm run handling` prints 0–100, top
+  speed, braking distance, cornering g, drift angle/recovery and rollover checks; Vitest asserts
+  they stay in sane ranges.
 - **Drivetrain (arcade-sim):**
-  - Rear-wheel drive by default: `setWheelEngineForce` on rear wheels from a torque curve ×
-    gear ratio; simple automatic gearbox driven by wheel RPM (also feeds engine audio).
-  - Brakes on all wheels (`setWheelBrake`), front-biased; handbrake on rear only, with reduced
-    rear `sideFrictionStiffness` while held (for drifts).
-  - **Speed-sensitive steering:** max steer angle shrinks with speed; steer input is
-    rate-limited (smoothed toward target) so keyboard input isn't twitchy.
-- **Extra forces** applied each tick: aerodynamic drag (`∝ v²`), rolling resistance, and
-  downforce (`∝ v²`) to keep the car planted at speed.
-- **Order per tick:** `applyInput` → `controller.updateVehicle(dt)` → `world.step()`.
-- **Reset/respawn:** teleport to last passed checkpoint, zero velocities, face track tangent.
-  Also auto-respawn if upside-down > 3 s or below the kill plane.
+  - Rear-wheel drive by default; drive force = `min(maxForce, power / speed)` (a constant-power
+    curve, no gearbox yet — a gearbox/RPM model for engine audio comes in phase 7).
+  - Brakes on all wheels, front-biased. Brake pedal reverses when (nearly) stopped.
+  - Handbrake: rear brake + rear grip (`sideFrictionStiffness`, `frictionSlip`) drops while
+    held, then eases back over `gripRecoveryTime`.
+  - **Speed-sensitive steering:** max steer angle shrinks with speed; the wheel angle is
+    rate-limited toward the target so keyboard input isn't twitchy.
+- **Stability assist (ESC-like):** Rapier's Bullet-style sliding friction never lets a slide
+  self-recover. While the handbrake is *not* held, `stepVehicle` removes yaw rate in excess of
+  the bicycle-model target (`v·tan(δ)/wheelbase`, capped at the grip limit `μg/v`). It never
+  adds yaw. `CAR.assist.yawStability = 0` gives raw physics.
+- **Extra forces** each tick as one-shot impulses (not `addForce`, which persists): drag
+  (`∝ v²`), rolling resistance (`∝ v`), downforce (`∝ v²`).
+- **Order per tick:** `stepVehicle()` (input → steering/drive/brakes → aero → `updateVehicle`
+  → assist) for every car, then `world.step()`.
+- **Body roll:** the raycast vehicle produces almost none whatever the centre of mass. Visual
+  roll/pitch from lateral/longitudinal acceleration will be added in the renderer (phase 6).
+- **Reset/respawn:** phase 1 resets upright in place (lifted, heading kept), zero velocities;
+  auto-reset if upside-down/on its side > 3 s. Phase 2 changes it to the last checkpoint.
 
 ### 4.4 Track physics
 - Track geometry is generated **deterministically from `trackDef`** in `/shared`, so server and
@@ -336,7 +359,8 @@ Each phase ends with a **playable/demoable** state and explicit exit criteria.
 
 ## 7. Key risks & mitigations
 - **Handling feel** is the biggest unknown → Phase 1 is single-player on purpose; keep all
-  tunables in `carSpecs.ts` and add a live-tweak debug panel (`lil-gui`).
+  tunables in `shared/src/tuning.ts`, measure with `npm run handling`, and (later) add a
+  live-tweak debug panel (`lil-gui`).
 - **Prediction artifacts from car contacts** → remote proxies in local world + visual
   smoothing; LAN latency keeps it small.
 - **Weak friend laptops** → quality presets + capped pixel ratio from Phase 6.

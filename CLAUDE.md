@@ -8,25 +8,27 @@ phase. If a decision changes, update that doc in the same change.
 
 ## Current phase
 
-> **Phase 0 — Scaffold** (not started). Update this line when a phase's exit criteria are met.
+> **Phase 0 — Scaffold: done.** **Phase 1 — Offline driving: done** (collider debug wireframe deferred).
+> **Next: Phase 2 — Track & laps.** Update this line when a phase's exit criteria are met.
 
 ## Stack
 - TypeScript everywhere (strict). npm workspaces monorepo.
-- `client/` — Vite + Three.js + `@dimforge/rapier3d-compat` + `postprocessing`
-- `server/` — Node 22 + `ws` (+ the same Rapier package, for the authoritative sim)
-- `shared/` — `@apex/shared`: protocol types, codec, constants, vehicle/track/lap logic
+- `client/` — Vite + Three.js (+ `postprocessing` from phase 6)
+- `server/` — Node 22 + `ws`
+- `shared/` — `@apex/shared`: protocol types, codec, constants, tuning, vehicle/track/lap logic. Owns the `@dimforge/rapier3d-compat` dependency (pinned exactly), so client and server always run the same Rapier build.
 
 ## Commands (run from repo root)
 | Command | What it does |
 |---|---|
 | `npm install` | install all workspaces |
-| `npm run dev` | server (`tsx watch`, :3000) + Vite dev server (:5173, `host: true`, proxies `/ws` → :3000) |
+| `npm run dev` | server (`tsx watch`, :3000) + Vite (:5173 on 0.0.0.0, proxies `/ws` → :3000). In dev, friends join the **:5173** URL |
 | `npm run build` | build client to `client/dist`, bundle server with esbuild to `server/dist` |
 | `npm start` | production: server on :3000 serves `client/dist` + `/ws` — **this is what friends join** |
 | `npm run typecheck` | `tsc --noEmit` across all workspaces |
 | `npm test` | Vitest (shared + server) |
+| `npm run handling` | headless driving scenarios → 0–100, braking, cornering g, drift angle, rollover checks for the current tuning |
 
-Run `npm run typecheck` and `npm test` before calling any task done.
+Run `npm run typecheck` and `npm test` before calling any task done. After touching car tuning or vehicle code, also run `npm run handling`.
 
 ## Architecture rules (non-negotiable)
 1. **Server is authoritative.** Clients send *inputs* only (`throttle/brake/steer/handbrake/reset` + `seq`), never positions.
@@ -34,14 +36,16 @@ Run `npm run typecheck` and `npm test` before calling any task done.
 3. **Snapshots at 30 Hz**, stamped with server tick and per-client `ackSeq`.
 4. **Own car = client-side prediction** + reconciliation (replay un-acked inputs, smooth visual error). **Remote cars = interpolation** at `serverTime − INTERP_DELAY_MS` (~100 ms). See ARCHITECTURE §3.5–3.6.
 5. **Simulation code lives in `/shared`** (vehicle setup, car specs, track collider generation, lap logic) so client prediction runs the exact code the server runs. Client and server must never have their own copies of physics logic.
-6. **Only `shared/src/physics/rapier.ts` imports Rapier.** Everything else imports from there. Rapier version is pinned exactly (no `^`), identical in client and server.
+6. **Only `shared/src/physics/rapier.ts` imports Rapier.** Everything else imports from there. Rapier version is pinned exactly (no `^`) in `shared/package.json`.
 7. **`/shared` is pure TS:** no DOM, no Node APIs, no Three.js. Renderer-agnostic geometry is produced as plain arrays and turned into Three meshes in `client/src/render`.
 8. **All wire messages** are defined in `shared/src/protocol/messages.ts` as discriminated unions on `t`, and go through `codec.ts`. No ad-hoc `JSON.stringify` on sockets.
 9. Simulation never reads wall-clock time or `Math.random()` without a seed — use tick counts.
 
 ## Conventions
-- **Units:** metres, seconds, kilograms, radians. **Y up. Car forward = +Z** (glTF convention). Set Rapier vehicle `indexUpAxis=1`, `indexForwardAxis=2` explicitly.
-- All tunables (car handling, net rates, interp delay) are named constants in `shared/constants.ts` or `shared/physics/carSpecs.ts` — no magic numbers in logic.
+- **Units:** metres, seconds, kilograms, radians. **Y up. Car forward = +Z** (glTF convention), so chassis left = +X. Wheel order everywhere: FL, FR, RL, RR.
+- **Steering sign:** `CarInput.steer` +1 = right. Rapier wheel steering angle + = left, so `vehicle.ts` negates it.
+- **All gameplay tuning** (car handling, camera, input feel) lives in `shared/src/tuning.ts`. Engine/net constants (tick rate, ports, interp delay) live in `shared/src/constants.ts`. No magic numbers in logic.
+- Car visuals go through `CarModel` (`client/src/render/carView.ts`): `{ body, wheels[4] }` with wheels centred, axle along X. A GLTF loader only has to produce that shape; `CarView` places wheels from `readWheelStates()`.
 - Files: `camelCase.ts`; types/interfaces `PascalCase`; constants `SCREAMING_SNAKE_CASE`.
 - Prefer plain functions + data objects over class hierarchies; classes are fine for stateful systems (e.g. `Simulation`, `Room`, `CarView`).
 - Three.js: dispose geometries/materials/textures when removing objects. Reuse temp `Vector3`/`Quaternion` objects in hot loops — no per-frame allocations in the render or physics loop.
@@ -67,9 +71,14 @@ Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unl
 - **Windows firewall** must allow Node on *Private* networks or friends can't connect. The server prints LAN URLs on boot.
 - Vite dev server needs `host: '0.0.0.0'` to be reachable from other devices.
 - `client/vite.config.ts` imports `@apex/shared` (raw TS), so Vite runs with `--configLoader runner`. Keep that flag on dev/build/preview.
-- The server esbuild bundle must **include** `@apex/shared` (only `ws` is external) � Node can't run the shared `.ts` source at runtime.
+- The server esbuild bundle must **include** `@apex/shared` (only `ws` is external) — Node can't run the shared `.ts` source at runtime.
 - The codec works on strings. Server converts frames with `data.toString()`; binary frames come with the phase 8 codec.
 - The host laptop has VPN/VM adapters (Cloudflare WARP, Hyper-V). The server labels each printed URL with its adapter name; share the **Wi-Fi** one.
-- `rapier3d-compat` requires `await RAPIER.init()` before use (both sides).
-- Call `vehicleController.updateVehicle(dt)` **before** `world.step()` each tick.
-- Plain `http://` on LAN is not a secure context: avoid APIs that require one (Gamepad is best-effort; keyboard is the baseline).
+- `rapier3d-compat` requires `await initRapier()` before use (both sides).
+- Per tick: `stepVehicle()` (applies input + `updateVehicle`) for every car, **then** `world.step()`.
+- Rapier vehicle quirks (v0.21): axis indices are *property setters*, and the forward one is literally named `setIndexForwardAxis` (`controller.setIndexForwardAxis = 2`). The default forward axis is X — always set it. Suspension stiffness/damping are per unit of mass (sag ≈ 9.81/(4·k)); engine force is in newtons; `frictionSlip` ≈ tyre μ.
+- Rapier's raycast vehicle has ~no body roll and Bullet-style sliding friction, so slides don't self-recover. That's why `stepVehicle` has a stability assist (`CAR.assist`). Visual body roll is a phase 6 renderer job.
+- Use one-shot `applyImpulse`, never `addForce`, for per-tick forces (aero): `addForce` persists across steps.
+- Plain `http://` on LAN is not a secure context: browsers hide gamepads there. Gamepad works for the host on `localhost`; friends get keyboard unless we add https later.
+- three r186 removed `PCFSoftShadowMap` (it falls back with a warning). Use `PCFShadowMap` + `shadow.radius`.
+- Windows: launch tsx scripts via `node node_modules/tsx/dist/cli.mjs` (as `npm run handling` does). `npx tsx` with JSON args in Git Bash hung.
