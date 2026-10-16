@@ -1,0 +1,21 @@
+{
+  "name": "@apex/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/main.ts --dev",
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --external:ws --outfile=dist/main.js",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@apex/shared": "0.0.0",
+    "@types/ws": "8.18.2",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
+  }
+}
