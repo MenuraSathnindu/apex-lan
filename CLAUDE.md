@@ -65,7 +65,11 @@ Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unl
 
 ## Gotchas
 - **Windows firewall** must allow Node on *Private* networks or friends can't connect. The server prints LAN URLs on boot.
-- Vite dev server needs `server.host: true` to be reachable from other devices.
+- Vite dev server needs `host: '0.0.0.0'` to be reachable from other devices.
+- `client/vite.config.ts` imports `@apex/shared` (raw TS), so Vite runs with `--configLoader runner`. Keep that flag on dev/build/preview.
+- The server esbuild bundle must **include** `@apex/shared` (only `ws` is external) — Node can't run the shared `.ts` source at runtime.
+- The codec works on strings. Server converts frames with `data.toString()`; binary frames come with the phase 8 codec.
+- The host laptop has VPN/VM adapters (Cloudflare WARP, Hyper-V). The server labels each printed URL with its adapter name; share the **Wi-Fi** one.
 - `rapier3d-compat` requires `await RAPIER.init()` before use (both sides).
 - Call `vehicleController.updateVehicle(dt)` **before** `world.step()` each tick.
 - Plain `http://` on LAN is not a secure context: avoid APIs that require one (Gamepad is best-effort; keyboard is the baseline).
