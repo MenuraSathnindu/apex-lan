@@ -1,0 +1,20 @@
+{
+  "name": "apex-lan",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "server", "client"],
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,green \"npm run dev -w @apex/server\" \"npm run dev -w @apex/client\"",
+    "build": "npm run build -w @apex/client && npm run build -w @apex/server",
+    "start": "npm run start -w @apex/server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "concurrently": "10.0.6",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  },
+  "engines": { "node": ">=22" }
+}
