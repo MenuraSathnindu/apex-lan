@@ -340,3 +340,29 @@ export const POST = {
   aoRadius: 2.0,
   aoIntensity: 2.0,
 };
+
+// ---------------------------------------------------------------------------
+// Race rules
+// ---------------------------------------------------------------------------
+
+export const RACE = {
+  defaultLaps: 3,
+  minLaps: 1,
+  maxLaps: 10,
+  /** Distance between invisible checkpoint gates along the track (m). Gate 0 = start/finish. */
+  checkpointSpacing: 100,
+  /** After the first car finishes, everyone else has this long before results (ms). */
+  finishGraceMs: 30_000,
+  /** Anything faster than this between two reported positions is a teleport, not driving (m/s). */
+  maxPlausibleSpeed: 110,
+  /** Respawn at the last checkpoint after being stuck on grass this long (s)… */
+  stuckOnGrassSeconds: 3,
+  /** …meaning slower than this (m/s). */
+  stuckSpeed: 6,
+  /** Respawn after being upside-down / on the side this long (s). */
+  flippedSeconds: 2,
+  /** Show the wrong-way warning after driving backwards this long (s). */
+  wrongWaySeconds: 1.2,
+  /** Respawned cars are placed this far past the checkpoint gate (m). */
+  respawnAhead: 3,
+};
