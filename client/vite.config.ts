@@ -27,8 +27,26 @@ function dracoDecoder(): Plugin {
   };
 }
 
+/**
+ * Node closes connections that send no request headers within 60 s with "408 Request
+ * Timeout". Browsers open spare connections ahead of time; while a tab spends a long time
+ * loading (many dev modules, big assets, a slow laptop) one can expire just as it's used,
+ * and a module fails to load. Give idle sockets 10 minutes instead.
+ */
+function relaxedTimeouts(): Plugin {
+  return {
+    name: 'apex-relaxed-timeouts',
+    configureServer(server) {
+      const http = server.httpServer as import('node:http').Server | null;
+      if (!http) return;
+      http.requestTimeout = 0;
+      http.headersTimeout = 10 * 60_000;
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [dracoDecoder()],
+  plugins: [dracoDecoder(), relaxedTimeouts()],
   server: {
     host: '0.0.0.0',
     port: DEV_CLIENT_PORT,
