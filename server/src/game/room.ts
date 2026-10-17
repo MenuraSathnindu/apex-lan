@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import {
+  APEX_PARK,
   CAR_COLORS,
+  RACE,
+  RaceTracker,
+  buildCheckpoints,
+  buildTrack,
   CONNECTION_TIMEOUT_MS,
   COUNTDOWN_MS,
   MAX_PLAYERS,
@@ -13,7 +18,11 @@ import {
   type PlayerInfo,
   type RaceState,
   type S2C,
+  type TrackDef,
 } from '@apex/shared';
+
+/** Standings go out every Nth update (30 Hz / 6 = 5 Hz). */
+const STANDINGS_EVERY = 6;
 
 /** What the room needs from a connection — a WebSocket in production, a stub in tests. */
 export interface Connection {
@@ -41,6 +50,7 @@ interface Player {
 export interface RoomOptions {
   now?: () => number;
   log?: (msg: string) => void;
+  track?: TrackDef;
 }
 
 /**
@@ -52,13 +62,19 @@ export class Room {
   private readonly byConn = new Map<Connection, Player>();
   private nextId = 1;
   private hostId = 0;
-  private race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0 };
+  private race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0 };
   private readonly now: () => number;
   private readonly log: (msg: string) => void;
+  private readonly track;
+  private readonly gates;
+  private tracker: RaceTracker | null = null;
+  private updates = 0;
 
   constructor(opts: RoomOptions = {}) {
     this.now = opts.now ?? Date.now;
     this.log = opts.log ?? (() => {});
+    this.track = buildTrack(opts.track ?? APEX_PARK);
+    this.gates = buildCheckpoints(this.track);
   }
 
   /** Feed every decoded message from a connection here (including before `hello`). */
@@ -85,13 +101,29 @@ export class Room {
         if (!isValidCarState(msg.s)) return;
         player.state = msg.s;
         player.stateTs = this.now();
+        if (this.tracker && (this.race.phase === 'countdown' || this.race.phase === 'racing')) {
+          for (const e of this.tracker.onState(player.id, msg.s.p[0], msg.s.p[2], player.stateTs)) this.onLap(e);
+        }
         break;
-      case 'start':
+      case 'setLaps': {
         if (player.id !== this.hostId || this.race.phase !== 'lobby') return;
-        this.race = { phase: 'countdown', raceId: this.race.raceId + 1, startsAt: this.now() + COUNTDOWN_MS };
-        this.log(`race ${this.race.raceId} starting (${this.connectedPlayers().length} players)`);
+        const laps = Math.round(Number(msg.laps));
+        if (!Number.isFinite(laps)) return;
+        this.race = { ...this.race, laps: Math.max(RACE.minLaps, Math.min(RACE.maxLaps, laps)) };
         this.broadcast({ t: 'race', race: this.race });
         break;
+      }
+      case 'start': {
+        if (player.id !== this.hostId || this.race.phase !== 'lobby') return;
+        const startsAt = this.now() + COUNTDOWN_MS;
+        const racers = this.connectedPlayers().map((p) => p.id);
+        this.tracker = new RaceTracker(this.track, this.gates, racers, startsAt, this.race.laps);
+        this.race = { ...this.race, phase: 'countdown', raceId: this.race.raceId + 1, startsAt, finishDeadline: 0 };
+        this.log(`race ${this.race.raceId} starting: ${racers.length} players, ${this.race.laps} laps`);
+        this.broadcast({ t: 'race', race: this.race });
+        this.broadcast({ t: 'standings', standings: this.tracker.standings() });
+        break;
+      }
       case 'endRace':
         if (player.id !== this.hostId || this.race.phase === 'lobby') return;
         this.toLobby();
@@ -143,7 +175,10 @@ export class Room {
       }
     }
     if (removed) {
-      if (this.players.size === 0) this.race = { phase: 'lobby', raceId: this.race.raceId, startsAt: 0 };
+      if (this.players.size === 0) {
+        this.race = { ...this.race, phase: 'lobby', startsAt: 0, finishDeadline: 0 };
+        this.tracker = null;
+      }
       this.broadcastRoster();
     }
     if (this.connectedPlayers().length === 0 && this.race.phase !== 'lobby') this.toLobby();
@@ -151,6 +186,20 @@ export class Room {
     if (this.race.phase === 'countdown' && now >= this.race.startsAt) {
       this.race = { ...this.race, phase: 'racing' };
       this.broadcast({ t: 'race', race: this.race });
+    }
+
+    if (this.race.phase === 'racing' && this.tracker) {
+      const connected = new Set(this.connectedPlayers().map((p) => p.id));
+      if (this.tracker.isOver(now, connected)) {
+        this.tracker.finalize();
+        this.race = { ...this.race, phase: 'results' };
+        const standings = this.tracker.standings();
+        this.log(`race ${this.race.raceId} over — winner #${standings[0]?.id}`);
+        this.broadcast({ t: 'race', race: this.race });
+        this.broadcast({ t: 'standings', standings });
+      } else if (++this.updates % STANDINGS_EVERY === 0) {
+        this.broadcast({ t: 'standings', standings: this.tracker.standings() });
+      }
     }
 
     // Relay states that changed since the last snapshot.
@@ -220,6 +269,7 @@ export class Room {
       race: this.race,
       resume: this.race.phase === 'lobby' ? null : player.state,
     });
+    if (this.tracker) conn.send({ t: 'standings', standings: this.tracker.standings() });
     this.broadcastRoster();
   }
 
@@ -253,8 +303,19 @@ export class Room {
   }
 
   private toLobby() {
-    this.race = { phase: 'lobby', raceId: this.race.raceId, startsAt: 0 };
+    this.race = { ...this.race, phase: 'lobby', startsAt: 0, finishDeadline: 0 };
+    this.tracker = null;
     this.broadcast({ t: 'race', race: this.race });
+  }
+
+  private onLap(e: import('@apex/shared').LapEvent) {
+    const p = this.players.get(e.id);
+    this.log(`${p?.name ?? e.id} lap ${e.lap}: ${(e.time / 1000).toFixed(3)}s${e.finished ? ' — FINISHED' : ''}`);
+    this.broadcast({ t: 'lap', e });
+    if (e.finished && this.race.finishDeadline === 0) {
+      this.race = { ...this.race, finishDeadline: this.now() + RACE.finishGraceMs };
+      this.broadcast({ t: 'race', race: this.race });
+    }
   }
 
   private connectedPlayers(): Player[] {

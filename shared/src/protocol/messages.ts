@@ -1,7 +1,9 @@
 // Wire protocol. Trust model (LAN, decided 2026-10-17): each client simulates its own car and
 // reports its state; the server owns the room (players, host, race phase) and relays car states.
 
-export type RacePhase = 'lobby' | 'countdown' | 'racing';
+import type { LapEvent, Standing } from '../race/raceTracker.ts';
+
+export type RacePhase = 'lobby' | 'countdown' | 'racing' | 'results';
 
 export interface PlayerInfo {
   id: number;
@@ -19,6 +21,10 @@ export interface RaceState {
   raceId: number;
   /** Server time (ms) when the countdown ends and racing begins. */
   startsAt: number;
+  /** Laps for the current/next race (host picks in the lobby). */
+  laps: number;
+  /** Server time results will be shown at the latest (0 until someone finishes). */
+  finishDeadline: number;
 }
 
 /** A car's state as reported by its owner. Numbers are rounded to keep messages small. */
@@ -48,6 +54,7 @@ export type C2S =
   | { t: 'profile'; name: string; color: number }
   | { t: 'state'; s: CarState }
   | { t: 'start' }
+  | { t: 'setLaps'; laps: number }
   | { t: 'endRace' }
   | { t: 'ping'; clientTime: number };
 
@@ -67,5 +74,8 @@ export type S2C =
   | { t: 'roster'; hostId: number; players: PlayerInfo[] }
   | { t: 'race'; race: RaceState }
   | { t: 'snapshot'; cars: CarSnapshot[] }
+  /** Live ranking (5 Hz while racing; final once results are in). */
+  | { t: 'standings'; standings: Standing[] }
+  | { t: 'lap'; e: LapEvent }
   | { t: 'pong'; clientTime: number; serverTime: number }
   | { t: 'full' };

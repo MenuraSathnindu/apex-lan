@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  APEX_PARK,
   CONNECTION_TIMEOUT_MS,
+  RACE,
+  buildTrack,
   COUNTDOWN_MS,
   MAX_PLAYERS,
   REJOIN_GRACE_MS,
@@ -202,5 +205,76 @@ describe('Room', () => {
     room.disconnect(a);
     const a2 = join('Ann', 0, a.last('welcome').sessionId);
     expect(a2.last('welcome').resume).toMatchObject({ p: [1, 2, 3] });
+  });
+
+  it('lets only the host set laps, in the lobby, clamped', () => {
+    const { room, join } = setup();
+    const a = join('Ann');
+    const b = join('Ben');
+    room.handle(b, { t: 'setLaps', laps: 5 });
+    expect(b.inbox.some((m) => m.t === 'race')).toBe(false);
+    room.handle(a, { t: 'setLaps', laps: 99 });
+    expect(b.last('race').race.laps).toBe(RACE.maxLaps);
+    room.handle(a, { t: 'setLaps', laps: 0 });
+    expect(b.last('race').race.laps).toBe(RACE.minLaps);
+  });
+
+  it('runs a full race: laps counted from states, results when everyone finishes, back to lobby', () => {
+    const { room, advance, join } = setup();
+    const a = join('Ann');
+    const b = join('Ben');
+    room.handle(a, { t: 'setLaps', laps: 1 });
+    room.handle(a, { t: 'start' });
+    advance(COUNTDOWN_MS + 10);
+    room.update();
+    expect(b.last('race').race.phase).toBe('racing');
+
+    // Ann drives one full lap along the centreline at 40 m/s, 30 states per second.
+    const track = buildTrack(APEX_PARK);
+    const step = track.samples[1]!.s;
+    const startS = track.samples[track.startIndex]!.s - 15;
+    for (let d = 0; d < track.length + 30; d += 40 / 30) {
+      const s = (startS + d) % track.length;
+      const smp = track.samples[Math.floor(s / step) % track.samples.length]!;
+      advance(1000 / 30);
+      room.handle(a, { t: 'state', s: { ...STATE, p: [smp.x, 0.7, smp.z] } });
+      room.handle(b, { t: 'ping', clientTime: 0 });
+      room.update();
+    }
+    const lap = b.last('lap').e;
+    expect(lap).toMatchObject({ lap: 1, finished: true });
+    expect(b.last('race').race.finishDeadline).toBeGreaterThan(0);
+    expect(b.last('race').race.phase).toBe('racing'); // Ben hasn't finished yet
+
+    // Ben leaves → everyone still connected has finished → results.
+    room.disconnect(b);
+    room.handle(a, { t: 'ping', clientTime: 0 });
+    room.update();
+    expect(a.last('race').race.phase).toBe('results');
+    const final = a.last('standings').standings;
+    expect(final[0]).toMatchObject({ id: a.last('welcome').playerId, pos: 1, laps: 1, dnf: false });
+    expect(final[1]!.dnf).toBe(true);
+
+    room.handle(a, { t: 'endRace' });
+    expect(a.last('race').race.phase).toBe('lobby');
+  });
+
+  it('cannot fake a lap by reporting positions that skip the track', () => {
+    const { room, advance, join } = setup();
+    const a = join('Ann');
+    room.handle(a, { t: 'setLaps', laps: 1 });
+    room.handle(a, { t: 'start' });
+    advance(COUNTDOWN_MS + 10);
+    room.update();
+    const track = buildTrack(APEX_PARK);
+    const st = track.samples[track.startIndex]!;
+    // Hop back and forth across the finish line only.
+    for (let i = 0; i < 20; i++) {
+      advance(1000 / 30);
+      const k = i % 2 === 0 ? -2 : 2;
+      room.handle(a, { t: 'state', s: { ...STATE, p: [st.x + st.tx * k, 0.7, st.z + st.tz * k] } });
+      room.update();
+    }
+    expect(a.inbox.some((m) => m.t === 'lap')).toBe(false);
   });
 });
