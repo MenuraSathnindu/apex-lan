@@ -184,3 +184,250 @@ body {
   font-size: 12px;
   opacity: 0.7;
 }
+
+/* --- Name tags ----------------------------------------------------------- */
+
+.tags {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.name-tag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(10, 12, 16, 0.6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.name-tag-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+
+/* --- Race overlay -------------------------------------------------------- */
+
+.race {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.race-count {
+  position: absolute;
+  top: 32%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-size: clamp(64px, 14vw, 160px);
+  font-weight: 800;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+}
+
+.race-count.pop {
+  animation: race-pop 0.9s ease-out;
+}
+
+@keyframes race-pop {
+  from {
+    transform: translate(-50%, -50%) scale(1.6);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.race-end {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* --- Lobby --------------------------------------------------------------- */
+
+.lobby {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 10, 14, 0.55);
+  backdrop-filter: blur(3px);
+  z-index: 5;
+}
+
+.lobby[hidden] {
+  display: none;
+}
+
+.lobby-panel {
+  width: min(420px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 20px 22px;
+  border-radius: 14px;
+  background: rgba(18, 20, 27, 0.94);
+  color: #e8e8e8;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lobby-panel h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+}
+
+.lobby-join {
+  margin: 0 0 16px;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.lobby-label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.lobby-name {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #3a3f4b;
+  border-radius: 8px;
+  background: #0f1116;
+  color: #fff;
+  font-size: 16px;
+}
+
+.lobby-colors {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+}
+
+.lobby-color {
+  aspect-ratio: 1;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+}
+
+.lobby-color.selected {
+  border-color: #fff;
+  transform: scale(1.12);
+}
+
+.lobby-color:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.lobby-players {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lobby-players li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 4px;
+  border-bottom: 1px solid #23262f;
+}
+
+.lobby-players li.away {
+  opacity: 0.5;
+}
+
+.lobby-players .slot {
+  width: 18px;
+  font-size: 12px;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.lobby-players .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.lobby-players .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby-players .badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #d7263d;
+  font-size: 11px;
+}
+
+.lobby-players .badge.you {
+  background: #2b59c3;
+}
+
+.lobby-players .status {
+  font-size: 12px;
+  font-style: italic;
+}
+
+.lobby-start {
+  width: 100%;
+  margin-top: 18px;
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: #d7263d;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lobby-wait {
+  margin: 12px 0 0;
+  font-size: 13px;
+  opacity: 0.75;
+  text-align: center;
+}
+
+/* Settings stay reachable on top of the lobby. */
+.settings-gear,
+.settings-panel {
+  z-index: 6;
+}

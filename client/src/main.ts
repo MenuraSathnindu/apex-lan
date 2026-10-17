@@ -3,107 +3,175 @@ import {
   APEX_PARK,
   ASSETS,
   CAR,
-  CAR_MODEL,
+  CAR_COLORS,
   FIXED_DT,
+  NEUTRAL_INPUT,
+  STATE_SEND_RATE,
+  TICK_RATE,
   addTrackColliders,
   buildTrack,
   createVehicle,
   createWorld,
   initRapier,
+  packCarState,
   readWheelStates,
+  resetVehicle,
   stepVehicle,
   vehicleSpeed,
   type CarInput,
+  type CarState,
+  type S2C,
   type WheelState,
 } from '@apex/shared';
 import { startLoop } from './core/loop.ts';
+import { RemoteCars } from './game/remoteCars.ts';
+import { Session } from './game/session.ts';
 import { createInputController } from './input/inputController.ts';
+import { ServerClock } from './net/clock.ts';
 import { connect } from './net/socket.ts';
-import { createBoxCarModel } from './render/boxCarModel.ts';
+import { boxCarFactory } from './render/boxCarModel.ts';
 import { CameraRig } from './render/cameraRig.ts';
-import { CarView, type CarModel } from './render/carView.ts';
-import { loadGltfCarModel } from './render/gltfCarModel.ts';
+import { CarView } from './render/carView.ts';
+import { loadGltfCarFactory, type CarFactory } from './render/gltfCarModel.ts';
 import { Graphics } from './render/graphics.ts';
 import { QualityManager } from './render/quality.ts';
 import { TrackView } from './render/trackView.ts';
 import { createHud } from './ui/hud.ts';
 import { createLoadingScreen } from './ui/loading.ts';
-import { createNetStatus, type ConnState } from './ui/netStatus.ts';
+import { createLobby } from './ui/lobby.ts';
+import { NameTags } from './ui/nameTags.ts';
+import { createNetStatus } from './ui/netStatus.ts';
+import { createRaceOverlay } from './ui/raceOverlay.ts';
 import { createSettings } from './ui/settings.ts';
 
-const loading = createLoadingScreen(document.querySelector<HTMLElement>('#loading')!);
+const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+const loading = createLoadingScreen($('#loading'));
 
-// --- Networking status (gameplay is still local until phase 3).
-const status = createNetStatus(document.querySelector<HTMLElement>('#net-status')!);
-let connState: ConnState = 'connecting';
-let playerCount = 0;
-let rttMs: number | null = null;
-const refreshStatus = () => status.update(connState, playerCount, rttMs);
-connect({
+// --- Session + networking. Connect right away; messages that arrive while assets load
+// update the session and are applied once the world exists.
+const session = new Session();
+const clock = new ServerClock();
+const status = createNetStatus($('#net-status'));
+let world: ReturnType<typeof createWorld> | null = null;
+// Room messages that arrive before the world exists are queued and replayed after loading.
+const queued: [S2C, number][] = [];
+let onRoomChange: (msg: S2C, prevRaceId: number) => void = (msg, prev) => queued.push([msg, prev]);
+let onSnapshot: (msg: Extract<S2C, { t: 'snapshot' }>) => void = () => {};
+
+const refreshStatus = () =>
+  status.update(session.connected ? 'connected' : 'disconnected', session.players.filter((p) => p.connected).length, clock.rttMs);
+
+const socket = connect({
   onOpen() {
-    connState = 'connected';
+    session.connected = true;
+    clock.reset();
+    socket.send(session.hello());
     refreshStatus();
   },
   onClose() {
-    connState = 'disconnected';
-    rttMs = null;
+    session.onDisconnect();
     refreshStatus();
   },
   onMessage(msg) {
-    switch (msg.t) {
-      case 'welcome':
-        playerCount = msg.playerCount;
-        break;
-      case 'playerCount':
-        playerCount = msg.count;
-        break;
-      case 'pong':
-        rttMs = performance.now() - msg.clientTime;
-        break;
-      case 'full':
-        console.warn('server is full');
-        break;
+    if (msg.t === 'pong') {
+      clock.onPong(msg.clientTime, msg.serverTime);
+      refreshStatus();
+      return;
     }
-    refreshStatus();
+    if (msg.t === 'snapshot') {
+      onSnapshot(msg);
+      return;
+    }
+    const prevRaceId = session.race.raceId;
+    if (session.handle(msg)) {
+      onRoomChange(msg, prevRaceId);
+      refreshStatus();
+    }
   },
 });
 
 // --- Physics.
 await initRapier();
 const track = buildTrack(APEX_PARK);
-const world = createWorld();
+world = createWorld();
 addTrackColliders(world, track);
 const car = createVehicle(world, track.spawnGrid[0]!);
 
 // --- Graphics + assets (each asset falls back to a procedural version if missing).
-const gfx = new Graphics(document.querySelector<HTMLCanvasElement>('#game')!);
+const gfx = new Graphics($('#game'));
 const quality = new QualityManager();
-const [trackView, carModel] = await Promise.all([
+const [trackView, carFactory] = await Promise.all([
   TrackView.create(track),
-  loadGltfCarModel(ASSETS.car, CAR, CAR_MODEL.paint.color).catch((err: unknown): CarModel => {
+  loadGltfCarFactory(ASSETS.car, CAR).catch((err: unknown): CarFactory => {
     console.warn(`[assets] Car model not loaded from /${ASSETS.car} — using the placeholder box car. See docs/ASSETS.md.`, err);
-    return createBoxCarModel(CAR, CAR_MODEL.paint.color);
+    return boxCarFactory(CAR);
   }),
   gfx.environment.load(),
 ]);
 gfx.scene.add(trackView.group);
-const carView = new CarView(carModel);
+const carView = new CarView(carFactory(CAR_COLORS[session.profile.color] ?? CAR_COLORS[0]));
 gfx.scene.add(carView.root);
+const nameTags = new NameTags($('#tags'));
+const remoteCars = new RemoteCars(world, gfx.scene, carFactory, nameTags, clock);
 
 const applyQuality = () => {
   gfx.applyQuality(quality.level, quality.settings);
   trackView.applyQuality(quality.settings);
   carView.setGlassTransmission(quality.settings.glassTransmission);
+  remoteCars.setGlassTransmission(quality.settings.glassTransmission);
 };
 quality.onChange(applyQuality);
 applyQuality();
 
 const cameraRig = new CameraRig(gfx.camera);
-const hud = createHud(document.querySelector<HTMLElement>('#hud')!);
-createSettings(document.querySelector<HTMLElement>('#settings')!, quality);
+const hud = createHud($('#hud'));
+createSettings($('#settings'), quality);
 const input = createInputController();
 
-// Chassis pose at the previous and current tick; frames render in between.
+// --- Room / race flow.
+const lobby = createLobby($('#lobby'), session, {
+  onProfile(name, color) {
+    socket.send(session.setProfile(name, color));
+  },
+  onStart() {
+    socket.send({ t: 'start' });
+  },
+});
+const raceOverlay = createRaceOverlay($('#race'), session, clock, () => socket.send({ t: 'endRace' }));
+
+/** Race we're currently driving in (0 = none yet). Lets a quick reconnect keep our car where it is. */
+let localRaceId = 0;
+let pending: { kind: 'grid' } | { kind: 'resume'; s: CarState } | null = null;
+
+const placeOnGrid = () => {
+  const slot = session.me?.slot ?? 0;
+  resetVehicle(car, track.spawnGrid[slot] ?? track.spawnGrid[0]!);
+};
+
+const applyRoom = (msg: S2C, prevRaceId: number) => {
+  if (msg.t === 'welcome') {
+    const sameRace = msg.race.phase !== 'lobby' && msg.race.raceId === localRaceId;
+    if (sameRace) {
+      // Brief disconnect mid-race: our local car is the truth, keep driving.
+    } else if (msg.resume) pending = { kind: 'resume', s: msg.resume };
+    else pending = { kind: 'grid' };
+    localRaceId = msg.race.raceId;
+  }
+  if (msg.t === 'race') {
+    if (msg.race.phase === 'countdown' && msg.race.raceId !== prevRaceId) pending = { kind: 'grid' };
+    if (msg.race.phase === 'lobby') pending = { kind: 'grid' };
+    localRaceId = msg.race.raceId;
+  }
+  if (session.me) carView.setPaint(CAR_COLORS[session.me.color] ?? CAR_COLORS[0]);
+  remoteCars.syncRoster(session.players, session.myId);
+  lobby.update();
+};
+onRoomChange = applyRoom;
+onSnapshot = (msg) => remoteCars.onSnapshot(msg.cars, session.myId);
+for (const [msg, prev] of queued.splice(0)) applyRoom(msg, prev);
+lobby.update();
+
+// --- Own car: interpolated between physics ticks for rendering.
 const prevPos = new THREE.Vector3();
 const currPos = new THREE.Vector3();
 const prevQuat = new THREE.Quaternion();
@@ -111,7 +179,10 @@ const currQuat = new THREE.Quaternion();
 const renderPos = new THREE.Vector3();
 const renderQuat = new THREE.Quaternion();
 const wheels: WheelState[] = [];
-let lastInput: CarInput | null = null;
+const HOLD: CarInput = { ...NEUTRAL_INPUT, handbrake: true };
+let lastInput: CarInput = HOLD;
+let tick = 0;
+const SEND_EVERY = Math.max(1, Math.round(TICK_RATE / STATE_SEND_RATE));
 
 const capturePose = () => {
   const t = car.body.translation();
@@ -128,18 +199,37 @@ await gfx.renderer.compileAsync(gfx.scene, gfx.camera);
 loading.hide();
 
 if (import.meta.env.DEV) {
-  // Debug handle for poking at the scene from the browser console.
-  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView } });
+  // Debug handle for poking at the game from the browser console (and automated tests).
+  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock } });
 }
 
 startLoop({
   step() {
+    if (pending) {
+      if (pending.kind === 'grid') placeOnGrid();
+      else {
+        const { p, q, v } = pending.s;
+        car.body.setTranslation({ x: p[0], y: p[1] + 0.2, z: p[2] }, true);
+        car.body.setRotation({ x: q[0], y: q[1], z: q[2], w: q[3] }, true);
+        car.body.setLinvel({ x: v[0], y: v[1], z: v[2] }, true);
+      }
+      pending = null;
+    }
+
     prevPos.copy(currPos);
     prevQuat.copy(currQuat);
-    lastInput = input.sample();
+    // Only drive while racing; in the lobby and during the countdown the car waits on the grid.
+    const sampled = input.sample();
+    lastInput = session.race.phase === 'racing' ? sampled : HOLD;
     stepVehicle(car, lastInput, FIXED_DT);
-    world.step();
+    remoteCars.stepPhysics();
+    world!.step();
     capturePose();
+
+    if (session.joined && ++tick % SEND_EVERY === 0) {
+      const braking = (lastInput.brake > 0 && vehicleSpeed(car) > 0.5) || lastInput.handbrake;
+      socket.send({ t: 'state', s: packCarState(car, braking) });
+    }
   },
   render(alpha, frameDt) {
     renderPos.lerpVectors(prevPos, currPos, alpha);
@@ -148,12 +238,15 @@ startLoop({
     carView.update(renderPos, renderQuat, wheels);
 
     const speed = vehicleSpeed(car);
-    carView.setBraking(!!lastInput && ((lastInput.brake > 0 && speed > 0.5) || lastInput.handbrake));
+    carView.setBraking((lastInput.brake > 0 && speed > 0.5) || (lastInput.handbrake && session.race.phase === 'racing'));
 
     if (input.consumeCameraCycle()) cameraRig.cycle();
     cameraRig.update(frameDt, renderPos, renderQuat, speed);
+    remoteCars.render(gfx.camera);
     gfx.environment.follow(renderPos);
     hud.update(speed, cameraRig.mode, input.gamepadConnected);
+    lobby.show(session.race.phase === 'lobby' || session.full);
+    raceOverlay.update();
     quality.frame(frameDt);
     gfx.render(frameDt);
   },

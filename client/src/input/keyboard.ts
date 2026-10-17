@@ -12,6 +12,8 @@ export function createKeyboard(target: Window = window): Keyboard {
   const pressed = new Set<string>();
 
   target.addEventListener('keydown', (e) => {
+    // Typing in a text field (e.g. the lobby name box) must not drive the car.
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (CAPTURED.has(e.code)) e.preventDefault();
     if (!e.repeat) pressed.add(e.code);
     down.add(e.code);
