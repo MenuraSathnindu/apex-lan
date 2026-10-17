@@ -8,13 +8,11 @@ phase. If a decision changes, update that doc in the same change.
 
 ## Current phase
 
-> **Phase 0 — Scaffold: done.** **Phase 1 — Offline driving: done** (collider debug wireframe deferred).
-> **Pulled forward on request:** the Phase 2 *track* (spline circuit, colliders, surfaces, spawn grid) and most of
-> **Phase 6 visuals** (HDRI, GLB car, PBR track, post FX, instanced scenery, quality presets + auto-pick).
-> **Multiplayer done (2026-10-17)** with a *client-authoritative* model (user's call — see rule 1): lobby, host start,
-> countdown, 30 Hz state relay, interpolated kinematic remote cars, name tags, rejoin, 8 players. This replaces phases 3–4
-> and most of 5. **Next: finish Phase 2** — checkpoints/lap counting/timing, positions, finish + results, respawn at last
-> checkpoint. Phase 6 leftovers: visual body roll, skid marks/smoke, real tree models. Update this line when a phase's exit criteria are met.
+> Phases 0–2 done; multiplayer (client-authoritative, replaces 3–4) done; **Phase 5 race flow done (2026-10-17)**:
+> countdown with input lock, checkpoints + server-validated laps, live standings, lap times, wrong-way warning,
+> auto-respawn, results podium, "Race again". Most of Phase 6 visuals done (pulled forward).
+> **Next: Phase 7 — audio & polish** (engine/tyre sounds, minimap). Phase 6 leftovers: visual body roll, skid marks/smoke,
+> real tree models. Phase 8: binary codec, perf. Update this line when a phase's exit criteria are met.
 
 ## Stack
 - TypeScript everywhere (strict). npm workspaces monorepo.
@@ -43,10 +41,11 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 3. **Server relays at `SNAPSHOT_RATE` (30 Hz)**, only states that changed, each stamped with the server receive time `ts`.
 4. **Remote cars = snapshot interpolation** at `serverClock − INTERP_DELAY_MS` (100 ms), with ≤150 ms velocity extrapolation, hidden after `REMOTE_STALE_MS`. Each is a **kinematic** Rapier body in the local world (group `REMOTE_PROXY`) so your car bumps into it. Collisions are asymmetric by design: a remote car is immovable on your screen.
 5. **Simulation code lives in `/shared`** (vehicle, tuning, track colliders, `packCarState`), so every client simulates identically and the server could take over later.
-6. **Only `shared/src/physics/rapier.ts` imports Rapier.** Everything else imports from there. Rapier version is pinned exactly (no `^`) in `shared/package.json`.
-7. **`/shared` is pure TS:** no DOM, no Node APIs, no Three.js. Renderer-agnostic geometry is produced as plain arrays and turned into Three meshes in `client/src/render`.
-8. **All wire messages** are defined in `shared/src/protocol/messages.ts` as discriminated unions on `t`, and go through `codec.ts`. No ad-hoc `JSON.stringify` on sockets.
-9. Simulation never reads wall-clock time or `Math.random()` without a seed — use tick counts.
+6. **Race results are server-authoritative even though cars aren't.** The server runs `RaceTracker` (`shared/src/race/`) on the relayed positions: a lap counts only if every checkpoint gate was crossed in order by plausible movement (no jump faster than `RACE.maxPlausibleSpeed`), and only after GO. Clients display the server's standings; they never report laps.
+7. **Only `shared/src/physics/rapier.ts` imports Rapier.** Everything else imports from there. Rapier version is pinned exactly (no `^`) in `shared/package.json`.
+8. **`/shared` is pure TS:** no DOM, no Node APIs, no Three.js. Renderer-agnostic geometry is produced as plain arrays and turned into Three meshes in `client/src/render`.
+9. **All wire messages** are defined in `shared/src/protocol/messages.ts` as discriminated unions on `t`, and go through `codec.ts`. No ad-hoc `JSON.stringify` on sockets.
+10. Simulation never reads wall-clock time or `Math.random()` without a seed — use tick counts.
 
 ## Conventions
 - **Units:** metres, seconds, kilograms, radians. **Y up. Car forward = +Z** (glTF convention), so chassis left = +X. Wheel order everywhere: FL, FR, RL, RR.
@@ -55,6 +54,8 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 - Car visuals go through `CarModel` (`client/src/render/carView.ts`): `{ body, wheels[4], brakeLights?, glass? }` with wheels centred, axle along X. `gltfCarModel.ts` fits any GLB to the physics car (wheelbase scale, wheel alignment, material swap by name); `boxCarModel.ts` is the fallback.
 - **Every asset is optional.** Missing files → procedural fallback + a `[assets]` console warning. Keep it that way: the game must run straight after `git clone && npm install`.
 - Tracks are pure data (`shared/src/track/tracks.ts`) → `buildTrack()` → mesh data for the client and colliders for physics. Validate new layouts with `track.test.ts` (corner radius, self-separation).
+- Race rules/tuning: `RACE` in `tuning.ts` (laps, checkpoint spacing, finish grace, respawn timers). Checkpoints are invisible gates every ~100 m (`buildCheckpoints`), gate 0 = start line; cars start behind it, so lap 1 includes the run from the grid.
+- Client race helpers (`client/src/game/raceController.ts`): wrong-way, auto-respawn (stuck on grass / past barriers / flipped) and R = respawn at the last checkpoint, using the server's `nextGate` as the truth.
 - Surfaces: tag colliders with `tagSurface(world, collider, 'asphalt' | 'curb' | 'grass')`. `stepVehicle` scales grip/drag per wheel from `CAR.surfaces`.
 - Colour pipeline: renderer uses `NoToneMapping`; ACES Filmic happens in the post chain (`render/post.ts`), output sRGB. Don't set `renderer.toneMapping`.
 - Files: `camelCase.ts`; types/interfaces `PascalCase`; constants `SCREAMING_SNAKE_CASE`.
@@ -68,9 +69,9 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 ## Build phases (details & exit criteria in ARCHITECTURE §6)
 0. **Scaffold** — workspaces, Vite, server serving dist + `/ws`, LAN URL print, ping/pong, Vitest
 1. **Offline driving** — Rapier vehicle on flat ground, input, chase camera, fixed-step loop
-2. **Track & laps** — spline track in `/shared`, colliders + meshes, checkpoints, laps, respawn, HUD
+2. **Track & laps** ✅ — spline track, colliders + meshes, checkpoint gates, server-validated laps, respawn, race HUD
 3. ~~Networking v1~~ / 4. ~~Prediction~~ — **replaced** by the client-authoritative relay (done).
-5. **Race flow** — lobby ✅, host start ✅, countdown ✅; positions, finish, results still to do (needs Phase 2 laps)
+5. **Race flow** ✅ — lobby, laps setting, host start, countdown (input locked until GO), live positions, finish grace, results podium, race again
 6. **Visual realism** — HDRI IBL, glTF cars, shadows, post FX, PBR road, scenery, effects, quality presets
 7. **Audio & polish** — engine/tire audio, HUD/minimap, settings, camera modes
 8. **Optimization & robustness** — binary codec, quantization, reconnect, perf, 2nd track

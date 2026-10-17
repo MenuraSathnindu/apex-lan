@@ -58,7 +58,8 @@ apex-lan/
 │     │  ├─ tracks.ts        # concrete track definitions (APEX_PARK)
 │     │  └─ validate.ts      # min corner radius / self-separation checks (used by tests)
 │     ├─ race/
-│     │  └─ lapLogic.ts      # checkpoint progression, lap counting, race position
+│     │  ├─ checkpoints.ts   # gates every ~100 m, crossesGate(), respawnPose(), nearestSample()
+│     │  └─ raceTracker.ts   # authoritative laps/times/standings from positions (+ test)
 │     └─ util/
 │        ├─ math.ts          # quat/vec helpers, lerp, slerp, angle wrap
 │        └─ ringBuffer.ts
@@ -90,7 +91,8 @@ apex-lan/
       │  └─ interpolation.ts # SnapshotBuffer: lerp/slerp/extrapolate (+ test)
       ├─ game/
       │  ├─ session.ts       # identity (sessionStorage), profile (localStorage), room state
-      │  └─ remoteCars.ts    # remote cars: buffer + kinematic proxy + model + name tag
+      │  ├─ remoteCars.ts    # remote cars: buffer + kinematic proxy + model + name tag
+      │  └─ raceController.ts # wrong-way, auto-respawn at last checkpoint, manual respawn
       ├─ input/
       │  ├─ keyboard.ts
       │  ├─ gamepad.ts
@@ -110,7 +112,7 @@ apex-lan/
       │  └─ effects/         # (later) skid marks, tire smoke, sparks
       ├─ audio/              # WebAudio engine/tire/impact sounds
       ├─ types/n8ao.d.ts     # n8ao ships no types
-      └─ ui/                 # HTML/CSS overlay: HUD, settings, loading, lobby, race overlay, name tags
+      └─ ui/                 # HTML/CSS overlay: HUD, settings, loading, lobby, countdown, race HUD, results, name tags
 ```
 
 **Why consume `/shared` as TypeScript source:** no separate build step or watch process for
@@ -179,16 +181,39 @@ CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking) } �
 - **Host** = earliest-joined connected player. It passes on during a disconnect and returns
   on rejoin.
 
-### 3.6 Testing
+### 3.6 Race logic (`shared/src/race/`, run by the server)
+- On `start` the server snapshots the connected players as participants and creates a
+  `RaceTracker(track, gates, participants, startsAt, laps)`. Late joiners can drive but aren't
+  ranked.
+- Every relayed state goes into `tracker.onState(id, x, z, serverTs)`. A racer must cross
+  `nextGate`; crossing gate 0 after all the others completes a lap, which records the lap time
+  and best lap and broadcasts a `lap` event. Movement faster than `RACE.maxPlausibleSpeed` (a
+  teleport, a respawn or a forged position) never crosses anything, and nothing counts before
+  `startsAt`. So skipping track sections, cutting across the infield, driving backwards or
+  hopping over the line can't produce a lap.
+- Standings: finishers by finish time, then everyone else by progress
+  (`laps × gates + gates passed + fraction to the next gate`, from the nearest centreline
+  sample). Broadcast at 5 Hz.
+- When the first car finishes, `finishDeadline = now + 30 s`. Results come at the deadline or
+  as soon as every connected participant has finished. Unfinished racers become **DNF**, the
+  phase becomes `results` (podium + table), and the host's **Race again** returns to the lobby.
+- Client-side (`raceController.ts`): input is locked until the server clock passes
+  `startsAt`; a wrong-way warning after 1.2 s heading against the track; auto-respawn at the
+  last passed checkpoint (from the server's `nextGate`) when stuck on grass for 3 s, beyond the
+  barriers, below the world, or flipped for 2 s; R respawns manually during a race.
+
+### 3.7 Testing
 - `server/src/game/room.test.ts`: join/full/colours/names, rejoin and grace expiry, duplicate
   tabs, host handover and return, start/countdown/end, relay, malformed input, dead
-  connections, heartbeat.
+  connections, heartbeat, lap setting, a full race to results, fake-lap rejection.
+- `shared/src/race/raceTracker.test.ts`: gates, lap counting and times, nothing before GO,
+  teleport shortcuts and backwards laps rejected, ranking, finish grace and DNF, late joiners.
 - `client/src/net/interpolation.test.ts`: buffer sampling, slerp, extrapolation, clock.
 - `npm run bots -- N`: N fake players that lap the racing line; fills a room for load tests.
   They don't avoid anyone, so they shove a stationary car off the grid.
 - Manual: two browser **windows** side by side (a background tab stops rendering).
 
-### 3.7 LAN hosting specifics
+### 3.8 LAN hosting specifics
 - HTTP + WS on `0.0.0.0:3000`. On boot the server prints every non-internal IPv4:
   `Join at: http://192.168.1.23:3000`.
 - **Windows firewall:** first run prompts to allow Node — tick *Private networks*. Document this
@@ -262,8 +287,10 @@ CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking) } �
 - **Surfaces:** Rapier's vehicle ignores collider friction, so colliders are tagged
   (`tagSurface`) and `stepVehicle` reads each wheel's ground collider: `CAR.surfaces` scales
   `frictionSlip` and adds rolling drag (grass = 55% grip + heavy drag).
-- Checkpoints are sensor-free: progress is computed by projecting the car onto the spline
-  (`lapLogic.ts`), which also yields race position (lap × length + distance along spline).
+- Checkpoints are **geometry, not physics sensors**, so the server can evaluate them without
+  a physics world: `buildCheckpoints()` places a gate (a line across the full width up to the
+  barriers) every ~100 m, gate 0 on the start line. `crossesGate()` checks that the segment
+  between two consecutive positions crosses the line in the driving direction. See §3.8.
 
 ### 4.5 Collision groups
 `TRACK`, `CAR`, `REMOTE_PROXY` (client only). Wheel raycasts only hit `TRACK` (filter via
@@ -350,10 +377,10 @@ Each phase ends with a **playable/demoable** state and explicit exit criteria.
 |---|---|---|
 | **0** | **Scaffold** — workspaces, strict TS, Vite client, Node server serving `client/dist` + `/ws`, LAN URL print, ping/pong, Vitest | A phone on the Wi-Fi opens `http://<ip>:3000` and shows a spinning cube + live RTT |
 | **1** | **Offline driving** — Rapier init, vehicle on flat ground, keyboard + gamepad, chase camera, fixed-step loop, debug wireframe of colliders | Car accelerates, brakes, steers, drifts with handbrake, doesn't roll over in normal turns |
-| **2** | **Track & laps (single player)** — spline track gen in `/shared`, road/barrier colliders + meshes, spawn grid, checkpoint/lap logic, respawn, basic HUD (speed, lap, time) | Complete timed laps on one closed circuit; respawn works |
+| **2** | **Track & laps** ✅ — spline track in `/shared`, colliders + meshes, checkpoint gates, server-validated laps, respawn at last checkpoint, race HUD | Complete timed laps; shortcuts don't count; respawn works |
 | **3** | ~~**Networking v1**~~ → **client-authoritative relay** (done 2026-10-17): Room on server, 30 Hz state relay, snapshot interpolation, kinematic remote proxies, name tags, rejoin, bots | 2+ windows see each other drive smoothly and can bump; reload mid-race resumes; 8 players |
 | **4** | ~~**Prediction & reconciliation**~~ — not needed under the client-authoritative model | — |
-| **5** | **Race flow** — lobby, host start, countdown ✅; positions, finish, results (needs Phase 2 laps) | Full race with friends start → results without reloading |
+| **5** | **Race flow** ✅ — lobby (name/colour/laps), countdown with input lock, grid start, live positions, finish grace, results podium, race again | Full race with friends start → results without reloading |
 | **6** | **Visual realism** — HDRI IBL, glTF cars with paint/clearcoat, shadows, post FX, PBR road, scenery, skid marks/smoke, quality presets | Looks "realistic-ish"; ≥60 fps on host laptop at Medium |
 | **7** | **Audio & polish** — engine (RPM-pitched loops), tire squeal, impacts, HUD/minimap, settings menu, camera modes | Feels like a game |
 | **8** | **Optimization & robustness** — binary codec, snapshot quantization, reconnect, tab-hidden handling, perf profiling, 2nd track | 8 players stable for a full race; bandwidth per client < 50 KB/s |
