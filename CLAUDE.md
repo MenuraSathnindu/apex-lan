@@ -11,8 +11,10 @@ phase. If a decision changes, update that doc in the same change.
 > **Phase 0 — Scaffold: done.** **Phase 1 — Offline driving: done** (collider debug wireframe deferred).
 > **Pulled forward on request:** the Phase 2 *track* (spline circuit, colliders, surfaces, spawn grid) and most of
 > **Phase 6 visuals** (HDRI, GLB car, PBR track, post FX, instanced scenery, quality presets + auto-pick).
-> **Next: finish Phase 2** — checkpoints/lap counting/timing, respawn at last checkpoint, lap HUD. Then Phase 3.
-> Phase 6 leftovers: visual body roll, skid marks/smoke, real tree models. Update this line when a phase's exit criteria are met.
+> **Multiplayer done (2026-10-17)** with a *client-authoritative* model (user's call — see rule 1): lobby, host start,
+> countdown, 30 Hz state relay, interpolated kinematic remote cars, name tags, rejoin, 8 players. This replaces phases 3–4
+> and most of 5. **Next: finish Phase 2** — checkpoints/lap counting/timing, positions, finish + results, respawn at last
+> checkpoint. Phase 6 leftovers: visual body roll, skid marks/smoke, real tree models. Update this line when a phase's exit criteria are met.
 
 ## Stack
 - TypeScript everywhere (strict). npm workspaces monorepo.
@@ -30,16 +32,17 @@ phase. If a decision changes, update that doc in the same change.
 | `npm run typecheck` | `tsc --noEmit` across all workspaces |
 | `npm test` | Vitest (shared + server) |
 | `npm run handling` | headless driving scenarios → 0–100, braking, cornering g, drift angle, rollover checks for the current tuning |
+| `npm run bots -- 7 [ws-url]` | fake players that join, wait on the grid and lap the track during races (default `ws://localhost:3000/ws`). Fill an 8-player room on your own |
 | `npm run assets` | downloads the optional HDRI / textures / car GLB into `client/public/` (git-ignored). See `docs/ASSETS.md` |
 
 Run `npm run typecheck` and `npm test` before calling any task done. After touching car tuning or vehicle code, also run `npm run handling`.
 
 ## Architecture rules (non-negotiable)
-1. **Server is authoritative.** Clients send *inputs* only (`throttle/brake/steer/handbrake/reset` + `seq`), never positions.
-2. **Fixed timestep 60 Hz** for physics on both sides (`TICK_RATE` in `shared/constants.ts`). Never step physics with variable dt.
-3. **Snapshots at 30 Hz**, stamped with server tick and per-client `ackSeq`.
-4. **Own car = client-side prediction** + reconciliation (replay un-acked inputs, smooth visual error). **Remote cars = interpolation** at `serverTime − INTERP_DELAY_MS` (~100 ms). See ARCHITECTURE §3.5–3.6.
-5. **Simulation code lives in `/shared`** (vehicle setup, car specs, track collider generation, lap logic) so client prediction runs the exact code the server runs. Client and server must never have their own copies of physics logic.
+1. **Trust model: each client is authoritative for its own car** (LAN among friends; chosen by the user on 2026-10-17, replacing the original server-authoritative plan). Clients simulate locally and send `CarState` (pose, velocity, wheels, brake flag) at `STATE_SEND_RATE` (30 Hz). **The server owns the room**: players, host, slots, colours, race phase, rejoin. It validates (`isValidCarState`) and relays states; it never simulates cars. Don't "fix" this back to server authority unless asked.
+2. **Fixed timestep 60 Hz** for client physics (`TICK_RATE` in `shared/constants.ts`). Never step physics with variable dt.
+3. **Server relays at `SNAPSHOT_RATE` (30 Hz)**, only states that changed, each stamped with the server receive time `ts`.
+4. **Remote cars = snapshot interpolation** at `serverClock − INTERP_DELAY_MS` (100 ms), with ≤150 ms velocity extrapolation, hidden after `REMOTE_STALE_MS`. Each is a **kinematic** Rapier body in the local world (group `REMOTE_PROXY`) so your car bumps into it. Collisions are asymmetric by design: a remote car is immovable on your screen.
+5. **Simulation code lives in `/shared`** (vehicle, tuning, track colliders, `packCarState`), so every client simulates identically and the server could take over later.
 6. **Only `shared/src/physics/rapier.ts` imports Rapier.** Everything else imports from there. Rapier version is pinned exactly (no `^`) in `shared/package.json`.
 7. **`/shared` is pure TS:** no DOM, no Node APIs, no Three.js. Renderer-agnostic geometry is produced as plain arrays and turned into Three meshes in `client/src/render`.
 8. **All wire messages** are defined in `shared/src/protocol/messages.ts` as discriminated unions on `t`, and go through `codec.ts`. No ad-hoc `JSON.stringify` on sockets.
@@ -66,9 +69,8 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 0. **Scaffold** — workspaces, Vite, server serving dist + `/ws`, LAN URL print, ping/pong, Vitest
 1. **Offline driving** — Rapier vehicle on flat ground, input, chase camera, fixed-step loop
 2. **Track & laps** — spline track in `/shared`, colliders + meshes, checkpoints, laps, respawn, HUD
-3. **Networking v1** — authoritative server sim, snapshots, remote interpolation (no prediction yet)
-4. **Prediction & reconciliation** — local world, replay, error smoothing, clock sync, net-debug overlay + fake latency
-5. **Race flow** — lobby, ready, countdown, positions, results
+3. ~~Networking v1~~ / 4. ~~Prediction~~ — **replaced** by the client-authoritative relay (done).
+5. **Race flow** — lobby ✅, host start ✅, countdown ✅; positions, finish, results still to do (needs Phase 2 laps)
 6. **Visual realism** — HDRI IBL, glTF cars, shadows, post FX, PBR road, scenery, effects, quality presets
 7. **Audio & polish** — engine/tire audio, HUD/minimap, settings, camera modes
 8. **Optimization & robustness** — binary codec, quantization, reconnect, perf, 2nd track
@@ -94,4 +96,9 @@ Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unl
 - three's `Sky` shader is very bright (its example uses exposure 0.5), and the postprocessing ACES effect ignores exposure. The fallback sky is baked to a PMREM and dimmed via `backgroundIntensity` / `environmentIntensity`.
 - Flat track layers (grass 0, road +2 cm, curbs, paint) use `polygonOffset` against z-fighting at distance; camera near plane is 0.15.
 - Headless Edge with SwiftShader runs at ~4 fps, so auto quality always picks Low there. For real numbers use `--use-angle=d3d11 --enable-gpu`. The dev build exposes `window.__apex` (gfx, car, quality, carView...) for poking from the console.
+- **Multiplayer testing:** use two separate browser *windows* side by side, not two tabs in one window: background tabs pause `requestAnimationFrame`, so that car stops sending. Tabs on one machine share `localStorage` (the name/colour profile) but not `sessionStorage` (the rejoin session id), so each tab is its own player. `window.__apex.remoteCars.debug()` shows buffer age/positions.
+- Hidden tabs throttle JS timers to ~1/min, so liveness comes from **server WebSocket ping frames** (answered by the browser itself → `Room.touch`), not just JS pings.
+- Host = earliest-joined *connected* player, so host passes on during a disconnect and comes back on rejoin. Rejoin = same `sessionId` within `REJOIN_GRACE_MS` (30 s); a duplicate tab (same session, original still live) gets a new identity.
+- Vite dev answered some module requests with **408**: Node's 60 s `headersTimeout` killed browser pre-connected sockets during slow loads. `vite.config.ts` raises it (dev only; prod serves a single bundle).
+- Name tags project with `camera.updateMatrixWorld()` first. three only updates camera matrices inside `render()`, so without it tags trail the car at speed.
 - Windows: launch tsx scripts via `node node_modules/tsx/dist/cli.mjs` (as `npm run handling` does). `npx tsx` with JSON args in Git Bash hung.

@@ -11,19 +11,18 @@ Wi-Fi open `http://<host-lan-ip>:3000` and play. Nothing to install on the clien
  ┌──────────────── Host laptop ────────────────┐         ┌──── Friend's browser ────┐
  │  Node server (:3000)                        │         │  Vite-built client       │
  │   ├─ HTTP: serves client/dist (static)      │◄──HTTP──┤  Three.js renderer       │
- │   ├─ WS  /ws: game protocol                 │◄══WS═══►│  Rapier (own-car predict)│
- │   └─ Authoritative sim: Rapier @ 60 Hz      │         │  Interp. of remote cars  │
- │        broadcasts snapshots @ 30 Hz         │         └──────────────────────────┘
+ │   ├─ WS  /ws: game protocol                 │◄══WS═══►│  Rapier: own car (auth.) │
+ │   └─ Room: players, host, race phase;       │         │  Remote cars: interp. +  │
+ │        relays car states @ 30 Hz            │         │  kinematic proxies       │
  └─────────────────────────────────────────────┘
 ```
 
 - **One port, one process.** In production mode the server serves the static client *and*
   the WebSocket on `/ws`, so friends only need one URL.
-- **Server is authoritative.** It runs the full physics world (all cars + track). Clients send
-  *inputs*, never positions.
-- **Shared simulation code.** The vehicle setup, track collider generation and constants live in
-  `/shared` and are imported by both client and server, so prediction runs the *same* code the
-  server runs.
+- **Clients own their cars; the server owns the room** (see §3). Each client simulates its
+  own car and reports its state; the server relays states and runs lobby/race logic.
+- **Shared simulation code.** Vehicle, tuning, track geometry/colliders and protocol helpers
+  live in `/shared`, so every client simulates identically (and a server sim stays possible).
 
 ---
 
@@ -66,31 +65,32 @@ apex-lan/
 ├─ server/                   # @apex/server — Node + ws
 │  ├─ package.json
 │  └─ src/
-│     ├─ main.ts             # HTTP static + WS upgrade, prints LAN URLs on boot
-│     ├─ net/
-│     │  ├─ connection.ts    # per-socket wrapper: decode, rate-limit, ping
-│     │  └─ broadcaster.ts   # builds & sends snapshots at SNAPSHOT_RATE
+│     ├─ main.ts             # HTTP static + WS → Room, 30 Hz update, WS heartbeat
+│     ├─ net/staticFiles.ts
 │     ├─ game/
-│     │  ├─ room.ts          # single room: players, state machine (lobby/countdown/race/results)
-│     │  ├─ simulation.ts    # Rapier world, fixed 60 Hz loop, input queue per player
-│     │  └─ player.ts
+│     │  ├─ room.ts          # the room: players, host, slots/colours, race phase, rejoin, relay
+│     │  └─ room.test.ts
 │     └─ util/lanAddress.ts
 ├─ scripts/
-│  └─ handling-report.ts     # `npm run handling`
+│  ├─ handling-report.ts     # `npm run handling`
+│  ├─ download-assets.mjs    # `npm run assets`
+│  └─ bots.ts                # `npm run bots -- N`
 └─ client/                   # @apex/client — Vite + Three.js (Rapier via @apex/shared)
    ├─ package.json
    ├─ vite.config.ts         # server.host = true, proxy /ws -> :3000
    ├─ index.html
-   ├─ public/assets/         # compressed glTF (Draco/Meshopt), KTX2 textures, HDRI
+   ├─ public/                # hdri/ textures/ models/ (git-ignored, `npm run assets`), draco/ (auto), CREDITS.md
    └─ src/
       ├─ main.ts             # bootstrap: init Rapier, renderer, connect, start loop
       ├─ core/
-      │  ├─ loop.ts          # fixed-step physics accumulator + rAF render
-      │  └─ clock.ts         # server-time estimate (ping/offset smoothing)
+      │  └─ loop.ts          # fixed-step physics accumulator + rAF render
       ├─ net/
-      │  ├─ socket.ts        # WS wrapper, reconnect, codec
-      │  ├─ prediction.ts    # input history, reconciliation, replay
-      │  └─ interpolation.ts # snapshot buffer + sampling for remote cars
+      │  ├─ socket.ts        # WS wrapper, reconnect, ping burst
+      │  ├─ clock.ts         # ServerClock (offset from low-RTT pongs)
+      │  └─ interpolation.ts # SnapshotBuffer: lerp/slerp/extrapolate (+ test)
+      ├─ game/
+      │  ├─ session.ts       # identity (sessionStorage), profile (localStorage), room state
+      │  └─ remoteCars.ts    # remote cars: buffer + kinematic proxy + model + name tag
       ├─ input/
       │  ├─ keyboard.ts
       │  ├─ gamepad.ts
@@ -110,7 +110,7 @@ apex-lan/
       │  └─ effects/         # (later) skid marks, tire smoke, sparks
       ├─ audio/              # WebAudio engine/tire/impact sounds
       ├─ types/n8ao.d.ts     # n8ao ships no types
-      └─ ui/                 # HTML/CSS overlay: HUD, settings, loading, (later) lobby/results
+      └─ ui/                 # HTML/CSS overlay: HUD, settings, loading, lobby, race overlay, name tags
 ```
 
 **Why consume `/shared` as TypeScript source:** no separate build step or watch process for
@@ -121,99 +121,74 @@ it into the server build for prod.
 
 ## 3. Networking model
 
-### 3.1 Transport
-- **WebSocket (`ws`)** over TCP. On a LAN, loss and head-of-line blocking are negligible.
-  Disable Nagle (`socket.setNoDelay(true)`) on the server side.
-- **Codec abstraction** from day one (`encode(msg) → ArrayBuffer | string`). Start with JSON for
-  debuggability; switch the hot messages (`input`, `snapshot`) to a compact binary layout
-  (`DataView`, quantized floats) in the optimization phase without touching game code.
+> **Changed 2026-10-17 (user decision):** the original plan was server-authoritative physics
+> with client prediction and reconciliation. For a LAN game among friends, the game now uses a
+> **client-authoritative relay**. Each player's own car feels instant with no reconciliation, and
+> the server stays tiny. The trade-offs are that cheating is possible (irrelevant among friends)
+> and car-to-car contact is asymmetric. Physics still lives in `/shared`, so moving to server
+> authority later remains possible.
 
-### 3.2 Rates & time
-| Thing | Rate | Notes |
-|---|---|---|
-| Physics tick (server & client) | **60 Hz** fixed (`dt = 1/60`) | accumulator loop, never variable dt |
-| Client → server input | every client tick (60 Hz) | tiny message; tagged with `seq` |
-| Server → client snapshot | **30 Hz** (every 2nd tick) | all cars + race state |
-| Remote-car interpolation delay | **~100 ms** (≈3 snapshots) | tunable; LAN can go lower (66 ms) |
-| Ping | 1 Hz | RTT + server clock offset estimate |
+### 3.1 Roles
+- **Client:** simulates its own car with Rapier at 60 Hz, sends `CarState` at 30 Hz, and
+  renders everyone else from relayed snapshots.
+- **Server (`server/src/game/room.ts`):** one `Room`, independent of sockets and unit-tested.
+  It owns players (id, name, colour, grid slot), the host, the race phase and rejoin. It
+  validates and relays car states and never simulates.
 
-All server state is stamped with a **tick number**. The client keeps a smoothed estimate of
-`serverTime ≈ localTime + offset` from ping/pong (`offset` = median of last N samples).
+### 3.2 Transport & rates
+- WebSocket (`ws`), JSON through `codec.ts` (binary later, same API).
+- Client → server `state` every 2nd physics tick (30 Hz). Server → clients `snapshot` at 30 Hz
+  with only the states that changed, each stamped `ts` = server receive time.
+- Ping/pong once per second (a 5-ping burst on connect) feeds the client's `ServerClock`: the
+  median offset of the lowest-RTT samples. Measured on LAN, two clients agree to within 1 ms.
+- Server WebSocket ping frames every 2 s. The browser answers them without JavaScript, so
+  background tabs (timers throttled to ~1/min) still count as alive.
 
-### 3.3 Messages (shared/protocol/messages.ts)
-```ts
-// Client → Server
-type C2S =
-  | { t: 'join'; name: string; color: number }
-  | { t: 'input'; seq: number; throttle: number; brake: number; steer: number; handbrake: boolean; reset: boolean }
-  | { t: 'ready'; ready: boolean }
-  | { t: 'ping'; clientTime: number };
-
-// Server → Client
-type S2C =
-  | { t: 'welcome'; playerId: number; tick: number; trackId: string; roster: PlayerInfo[] }
-  | { t: 'roster'; players: PlayerInfo[] }
-  | { t: 'snapshot'; tick: number; ackSeq: number; cars: CarState[]; race: RaceState }
-  | { t: 'event'; e: RaceEvent }          // countdown, lap, finish, collision...
-  | { t: 'pong'; clientTime: number; serverTime: number };
-
-interface CarState {
-  id: number;
-  p: [number, number, number];          // chassis position
-  q: [number, number, number, number];  // chassis rotation
-  v: [number, number, number];          // linear velocity
-  w: [number, number, number];          // angular velocity
-  wheels: { steer: number; spin: number; susp: number }[]; // visual-only
-}
+### 3.3 Messages (`shared/protocol/messages.ts`)
 ```
-`ackSeq` is per-recipient: the last input `seq` the server applied for *that* client.
+C2S: hello{sessionId,name,color} · profile{name,color} · state{s: CarState} · start · endRace · ping
+S2C: welcome{playerId,sessionId,hostId,players,race,resume} · roster{hostId,players}
+     · race{phase,raceId,startsAt} · snapshot{cars: (CarState & {id, ts})[]} · pong · full
+CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking) } — rounded
+```
 
-### 3.4 Server loop
-1. Each tick, for every player pop the next queued input (keep the last one if the queue is
-   empty — "input repeat"); cap the queue (e.g. 8) to stop speed-hacking/backlog.
-2. `applyInput` → `vehicle.updateVehicle(dt)` for each car → `world.step()`.
-3. Run lap/checkpoint logic.
-4. Every 2nd tick, broadcast a snapshot (with per-client `ackSeq`).
+### 3.4 Remote cars (`client/src/game/remoteCars.ts`)
+- Per player: a `SnapshotBuffer` (1 s history), a cloned car model in their colour, an HTML
+  name tag, and a **kinematic-position-based** Rapier body (chassis box, group `REMOTE_PROXY`).
+- Each physics tick the proxy is moved with `setNextKinematic*` to the pose at
+  `serverNow − 100 ms` (lerp/slerp; ≤150 ms velocity extrapolation if data runs out). Rapier
+  derives its velocity, so your car bounces off it realistically.
+- Each frame the model and tag are placed at the same interpolated pose. No update for
+  1.5 s → the car is hidden and its collider disabled.
+- **Asymmetric contact:** on your screen a remote car can't be pushed. If you ram someone,
+  you bounce on your screen and they get shoved on theirs.
 
-### 3.5 Own car: client-side prediction + reconciliation
-The client runs its **own local Rapier world** containing: the static track collider, the
-player's car (dynamic, full vehicle controller), and every remote car as a
-**kinematic-position-based** body placed at its interpolated pose (so you predictively bump into
-them).
+### 3.5 Room & race flow
+- Join: `hello` → `welcome`. You get the lowest free grid slot and your colour (or the first
+  free one); the room holds `MAX_PLAYERS` (8), and a 9th connection gets `full`.
+- Lobby (`client/src/ui/lobby.ts`): name, colour (taken colours disabled), player list with
+  host/you badges. Only the host sees **Start**.
+- `start` → `countdown` (3 s, `startsAt` on the server clock; everyone resets to their grid
+  slot and is held) → `racing`. The host can **End race** → `lobby` (back to the grid).
+- **Disconnects:** close event, or no messages/pongs for 5 s → marked away; the slot, name and
+  colour are held for 30 s.
+- **Rejoin:** the client keeps the server-issued `sessionId` in `sessionStorage`, so a reload
+  or Wi-Fi blip comes back as the same player. Mid-race it resumes at its last reported state;
+  if the local car is already in that race (a quick blip), it keeps driving. A duplicated tab
+  (same session, original still live) becomes a new player.
+- **Host** = earliest-joined connected player. It passes on during a disconnect and returns
+  on rejoin.
 
-Per client tick:
-1. Sample input → assign `seq` → store `{seq, input}` in a ring buffer → send to server.
-2. Apply the input to the local car and step the local world.
+### 3.6 Testing
+- `server/src/game/room.test.ts`: join/full/colours/names, rejoin and grace expiry, duplicate
+  tabs, host handover and return, start/countdown/end, relay, malformed input, dead
+  connections, heartbeat.
+- `client/src/net/interpolation.test.ts`: buffer sampling, slerp, extrapolation, clock.
+- `npm run bots -- N`: N fake players that lap the racing line; fills a room for load tests.
+  They don't avoid anyone, so they shove a stationary car off the grid.
+- Manual: two browser **windows** side by side (a background tab stops rendering).
 
-On each snapshot:
-1. Drop buffered inputs with `seq <= ackSeq`.
-2. Compare server's own-car state with the locally predicted state *for `ackSeq`*
-   (keep a ring buffer of predicted states keyed by `seq`).
-3. If the error is below a threshold (e.g. 5 cm / 1°): do nothing.
-4. Otherwise: **set the car's body to the server state, replay all un-acked inputs** (stepping
-   only the local world — cheap, since it holds one dynamic body), then hide the pop with a
-   **visual offset** that decays to zero over ~100 ms (the render mesh is offset from the
-   physics body; physics itself snaps).
-5. Very large error (> 3 m, e.g. respawn/teleport): hard snap, no smoothing.
-
-On a LAN the RTT is a few ms, so replays are short (1–3 ticks) and corrections are rare —
-they mostly come from car-vs-car contacts, which the server resolves authoritatively.
-
-### 3.6 Remote cars: snapshot interpolation
-- Keep a buffer of the last ~1 s of snapshots per car.
-- Render time = `estimatedServerTime − INTERP_DELAY`.
-- Find the two snapshots bracketing render time; **lerp position, slerp rotation**. Velocity in
-  the snapshot allows Hermite interpolation later if motion looks steppy.
-- If the buffer runs dry, extrapolate with velocity for up to ~150 ms, then freeze.
-
-### 3.7 Room / session
-- One room per server, up to 8 players. State machine:
-  `lobby → countdown → racing → results → lobby`.
-- Join with name + paint colour; host-side has no special UI (any player can press "ready";
-  race starts when all ready, or ≥1 ready + 10 s timer).
-- On disconnect the car is removed; reconnects within 30 s keep the slot (later phase).
-
-### 3.8 LAN hosting specifics
+### 3.7 LAN hosting specifics
 - HTTP + WS on `0.0.0.0:3000`. On boot the server prints every non-internal IPv4:
   `Join at: http://192.168.1.23:3000`.
 - **Windows firewall:** first run prompts to allow Node — tick *Private networks*. Document this
@@ -376,9 +351,9 @@ Each phase ends with a **playable/demoable** state and explicit exit criteria.
 | **0** | **Scaffold** — workspaces, strict TS, Vite client, Node server serving `client/dist` + `/ws`, LAN URL print, ping/pong, Vitest | A phone on the Wi-Fi opens `http://<ip>:3000` and shows a spinning cube + live RTT |
 | **1** | **Offline driving** — Rapier init, vehicle on flat ground, keyboard + gamepad, chase camera, fixed-step loop, debug wireframe of colliders | Car accelerates, brakes, steers, drifts with handbrake, doesn't roll over in normal turns |
 | **2** | **Track & laps (single player)** — spline track gen in `/shared`, road/barrier colliders + meshes, spawn grid, checkpoint/lap logic, respawn, basic HUD (speed, lap, time) | Complete timed laps on one closed circuit; respawn works |
-| **3** | **Networking v1** — server-authoritative sim, join/leave, input messages, 30 Hz snapshots, remote-car interpolation; own car simply follows server state | 2+ browsers see each other drive smoothly; car-car collisions happen on server |
-| **4** | **Prediction & reconciliation** — local world, input ring buffer, replay, visual error smoothing, clock sync, net-debug overlay (RTT, corrections/s, buffer depth) + artificial latency/jitter toggle | Own car feels instant even with 100 ms simulated latency; corrections invisible on real LAN |
-| **5** | **Race flow** — lobby (name/colour/ready), countdown, grid start, positions, finish, results, back to lobby | Full race with friends start → results without reloading |
+| **3** | ~~**Networking v1**~~ → **client-authoritative relay** (done 2026-10-17): Room on server, 30 Hz state relay, snapshot interpolation, kinematic remote proxies, name tags, rejoin, bots | 2+ windows see each other drive smoothly and can bump; reload mid-race resumes; 8 players |
+| **4** | ~~**Prediction & reconciliation**~~ — not needed under the client-authoritative model | — |
+| **5** | **Race flow** — lobby, host start, countdown ✅; positions, finish, results (needs Phase 2 laps) | Full race with friends start → results without reloading |
 | **6** | **Visual realism** — HDRI IBL, glTF cars with paint/clearcoat, shadows, post FX, PBR road, scenery, skid marks/smoke, quality presets | Looks "realistic-ish"; ≥60 fps on host laptop at Medium |
 | **7** | **Audio & polish** — engine (RPM-pitched loops), tire squeal, impacts, HUD/minimap, settings menu, camera modes | Feels like a game |
 | **8** | **Optimization & robustness** — binary codec, snapshot quantization, reconnect, tab-hidden handling, perf profiling, 2nd track | 8 players stable for a full race; bandwidth per client < 50 KB/s |
