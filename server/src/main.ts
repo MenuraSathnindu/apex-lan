@@ -2,15 +2,8 @@ import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import {
-  DEV_CLIENT_PORT,
-  MAX_PLAYERS,
-  SERVER_PORT,
-  WS_PATH,
-  decodeC2S,
-  encode,
-  type S2C,
-} from '@apex/shared';
+import { DEV_CLIENT_PORT, SERVER_PORT, SNAPSHOT_RATE, WS_PATH, decodeC2S, encode } from '@apex/shared';
+import { Room, type Connection } from './game/room.ts';
 import { createStaticHandler } from './net/staticFiles.ts';
 import { lanAddresses } from './util/lanAddress.ts';
 
@@ -22,51 +15,38 @@ const clientDist = resolve(dirname(fileURLToPath(import.meta.url)), '../../clien
 
 const http = createServer(createStaticHandler(clientDist));
 const wss = new WebSocketServer({ server: http, path: WS_PATH, maxPayload: 64 * 1024 });
+const room = new Room({ log: (m) => console.log(`[room] ${m}`) });
 
-const players = new Map<WebSocket, number>();
-let nextPlayerId = 1;
-
-function send(ws: WebSocket, msg: S2C) {
-  if (ws.readyState === ws.OPEN) ws.send(encode(msg));
-}
-
-function broadcastPlayerCount() {
-  for (const ws of players.keys()) send(ws, { t: 'playerCount', count: players.size });
+function toConnection(ws: WebSocket): Connection {
+  return {
+    send: (msg) => {
+      if (ws.readyState === ws.OPEN) ws.send(encode(msg));
+    },
+    close: () => ws.close(),
+  };
 }
 
 wss.on('connection', (ws, req) => {
-  if (players.size >= MAX_PLAYERS) {
-    send(ws, { t: 'full' });
-    ws.close();
-    return;
-  }
-
-  const playerId = nextPlayerId++;
-  players.set(ws, playerId);
-  console.log(`[ws] player ${playerId} connected from ${req.socket.remoteAddress} (${players.size} online)`);
-  send(ws, { t: 'welcome', playerId, playerCount: players.size });
-  broadcastPlayerCount();
+  const conn = toConnection(ws);
+  console.log(`[ws] connection from ${req.socket.remoteAddress}`);
 
   ws.on('message', (data) => {
-    let msg;
     try {
-      msg = decodeC2S(data.toString());
+      room.handle(conn, decodeC2S(data.toString()));
     } catch {
-      return;
-    }
-    switch (msg.t) {
-      case 'ping':
-        send(ws, { t: 'pong', clientTime: msg.clientTime, serverTime: Date.now() });
-        break;
+      // Malformed message: ignore.
     }
   });
-
-  ws.on('close', () => {
-    players.delete(ws);
-    console.log(`[ws] player ${playerId} disconnected (${players.size} online)`);
-    broadcastPlayerCount();
-  });
+  // Browser-level heartbeat: pongs arrive even when a background tab's timers are throttled.
+  ws.on('pong', () => room.touch(conn));
+  ws.on('close', () => room.disconnect(conn));
+  ws.on('error', () => room.disconnect(conn));
 });
+
+setInterval(() => room.update(), 1000 / SNAPSHOT_RATE);
+setInterval(() => {
+  for (const ws of wss.clients) if (ws.readyState === ws.OPEN) ws.ping();
+}, 2000);
 
 http.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
