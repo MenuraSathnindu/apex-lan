@@ -23,8 +23,11 @@ export function connect(handlers: SocketHandlers) {
 
     ws.onopen = () => {
       handlers.onOpen();
-      send({ t: 'ping', clientTime: performance.now() });
-      pingTimer = setInterval(() => send({ t: 'ping', clientTime: performance.now() }), PING_INTERVAL_MS);
+      // A quick burst so the server clock estimate is good within ~0.3 s, then steady pings
+      // (which also tell the server we're alive).
+      const ping = () => send({ t: 'ping', clientTime: performance.now() });
+      for (let i = 0; i < 5; i++) setTimeout(ping, i * 60);
+      pingTimer = setInterval(ping, PING_INTERVAL_MS);
     };
     ws.onmessage = (ev) => {
       try {
