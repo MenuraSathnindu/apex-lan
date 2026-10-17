@@ -9,6 +9,7 @@ import {
   STATE_SEND_RATE,
   TICK_RATE,
   addTrackColliders,
+  buildCheckpoints,
   buildTrack,
   createVehicle,
   createWorld,
@@ -24,6 +25,7 @@ import {
   type WheelState,
 } from '@apex/shared';
 import { startLoop } from './core/loop.ts';
+import { RaceController } from './game/raceController.ts';
 import { RemoteCars } from './game/remoteCars.ts';
 import { Session } from './game/session.ts';
 import { createInputController } from './input/inputController.ts';
@@ -41,7 +43,9 @@ import { createLoadingScreen } from './ui/loading.ts';
 import { createLobby } from './ui/lobby.ts';
 import { NameTags } from './ui/nameTags.ts';
 import { createNetStatus } from './ui/netStatus.ts';
+import { createRaceHud } from './ui/raceHud.ts';
 import { createRaceOverlay } from './ui/raceOverlay.ts';
+import { createResults } from './ui/results.ts';
 import { createSettings } from './ui/settings.ts';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -136,16 +140,23 @@ const lobby = createLobby($('#lobby'), session, {
   onStart() {
     socket.send({ t: 'start' });
   },
+  onLaps(laps) {
+    socket.send({ t: 'setLaps', laps });
+  },
 });
 const raceOverlay = createRaceOverlay($('#race'), session, clock, () => socket.send({ t: 'endRace' }));
+const gridPose = () => track.spawnGrid[session.me?.slot ?? 0] ?? track.spawnGrid[0]!;
+const raceController = new RaceController(track, buildCheckpoints(track), car, session, gridPose);
+const raceHud = createRaceHud($('#racehud'), session, clock, raceController);
+const results = createResults($('#results'), session, () => socket.send({ t: 'endRace' }));
 
 /** Race we're currently driving in (0 = none yet). Lets a quick reconnect keep our car where it is. */
 let localRaceId = 0;
 let pending: { kind: 'grid' } | { kind: 'resume'; s: CarState } | null = null;
 
 const placeOnGrid = () => {
-  const slot = session.me?.slot ?? 0;
-  resetVehicle(car, track.spawnGrid[slot] ?? track.spawnGrid[0]!);
+  resetVehicle(car, gridPose());
+  raceController.reset();
 };
 
 const applyRoom = (msg: S2C, prevRaceId: number) => {
@@ -200,7 +211,7 @@ loading.hide();
 
 if (import.meta.env.DEV) {
   // Debug handle for poking at the game from the browser console (and automated tests).
-  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock } });
+  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock, raceController } });
 }
 
 startLoop({
@@ -218,12 +229,21 @@ startLoop({
 
     prevPos.copy(currPos);
     prevQuat.copy(currQuat);
-    // Only drive while racing; in the lobby and during the countdown the car waits on the grid.
+    // Input is locked in the lobby and until GO (judged on the server clock, so it unlocks
+    // exactly at zero even if the 'racing' message is a few ms late). Results = cool-down lap.
+    const { phase, startsAt } = session.race;
+    const racing = phase === 'racing' || (phase === 'countdown' && clock.now() >= startsAt);
     const sampled = input.sample();
-    lastInput = session.race.phase === 'racing' ? sampled : HOLD;
+    lastInput = racing || phase === 'results' ? sampled : HOLD;
+    if (racing && lastInput.reset) {
+      // During a race, R puts you back at the last checkpoint instead of resetting in place.
+      raceController.respawn('manual');
+      lastInput = { ...lastInput, reset: false };
+    }
     stepVehicle(car, lastInput, FIXED_DT);
     remoteCars.stepPhysics();
     world!.step();
+    if (racing) raceController.step(FIXED_DT);
     capturePose();
 
     if (session.joined && ++tick % SEND_EVERY === 0) {
@@ -247,6 +267,8 @@ startLoop({
     hud.update(speed, cameraRig.mode, input.gamepadConnected);
     lobby.show(session.race.phase === 'lobby' || session.full);
     raceOverlay.update();
+    raceHud.update();
+    results.update();
     quality.frame(frameDt);
     gfx.render(frameDt);
   },

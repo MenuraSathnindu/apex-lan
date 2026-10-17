@@ -28,7 +28,7 @@ export function createRaceOverlay(root: HTMLElement, session: Session, clock: Se
         if (text) countEl.classList.add('pop');
         lastText = text;
       }
-      endBtn.hidden = !(session.isHost && phase !== 'lobby');
+      endBtn.hidden = !(session.isHost && (phase === 'countdown' || phase === 'racing'));
     },
   };
 }

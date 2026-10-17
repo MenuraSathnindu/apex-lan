@@ -1,4 +1,4 @@
-import { CAR_COLORS, CAR_COLOR_NAMES, MAX_PLAYERS, NAME_MAX_LENGTH } from '@apex/shared';
+import { CAR_COLORS, CAR_COLOR_NAMES, MAX_PLAYERS, NAME_MAX_LENGTH, RACE } from '@apex/shared';
 import type { Session } from '../game/session.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
@@ -7,6 +7,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};
 export interface LobbyHandlers {
   onProfile(name: string, color: number): void;
   onStart(): void;
+  onLaps(laps: number): void;
 }
 
 /** Pre-race screen: name, colour, who's here, and the host's Start button. */
@@ -22,6 +23,13 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
         ${CAR_COLORS.map(
           (c, i) => `<button type="button" class="lobby-color" data-color="${i}" style="--c:${hex(c)}" title="${CAR_COLOR_NAMES[i]}"></button>`,
         ).join('')}
+      </div>
+      <div class="lobby-label">Laps</div>
+      <div class="lobby-laps">
+        <button type="button" class="lobby-laps-btn" data-d="-1" aria-label="Fewer laps">−</button>
+        <span class="lobby-laps-value"></span>
+        <button type="button" class="lobby-laps-btn" data-d="1" aria-label="More laps">+</button>
+        <span class="lobby-laps-hint"></span>
       </div>
       <div class="lobby-label">Players <span class="lobby-count"></span></div>
       <ul class="lobby-players"></ul>
@@ -52,6 +60,15 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
     });
   }
   start.addEventListener('click', () => handlers.onStart());
+  const lapsValue = root.querySelector<HTMLElement>('.lobby-laps-value')!;
+  const lapsHint = root.querySelector<HTMLElement>('.lobby-laps-hint')!;
+  const lapButtons = [...root.querySelectorAll<HTMLButtonElement>('.lobby-laps-btn')];
+  for (const b of lapButtons) {
+    b.addEventListener('click', () => {
+      const next = Math.max(RACE.minLaps, Math.min(RACE.maxLaps, session.race.laps + Number(b.dataset.d)));
+      if (next !== session.race.laps) handlers.onLaps(next);
+    });
+  }
 
   const update = () => {
     if (session.full) {
@@ -93,6 +110,14 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
         </li>`;
       })
       .join('');
+
+    lapsValue.textContent = String(session.race.laps);
+    for (const b of lapButtons) {
+      const d = Number(b.dataset.d);
+      b.hidden = !session.isHost;
+      b.disabled = d < 0 ? session.race.laps <= RACE.minLaps : session.race.laps >= RACE.maxLaps;
+    }
+    lapsHint.textContent = session.isHost ? '' : 'set by the host';
 
     start.hidden = !session.isHost;
     const host = session.players.find((p) => p.id === session.hostId);

@@ -1,0 +1,75 @@
+import { CAR_COLORS } from '@apex/shared';
+import type { Session } from '../game/session.ts';
+import { formatTime } from './raceHud.ts';
+
+const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+
+/** Results screen: podium for the top 3, full table, and the host's "Race again". */
+export function createResults(root: HTMLElement, session: Session, onRaceAgain: () => void) {
+  root.innerHTML = `
+    <div class="res-panel">
+      <h1>Results</h1>
+      <div class="res-podium"></div>
+      <table class="res-table">
+        <thead><tr><th>#</th><th>Driver</th><th>Time</th><th>Best lap</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button type="button" class="res-again">Race again</button>
+      <p class="res-wait"></p>
+    </div>`;
+  const podium = root.querySelector<HTMLElement>('.res-podium')!;
+  const tbody = root.querySelector<HTMLElement>('tbody')!;
+  const again = root.querySelector<HTMLButtonElement>('.res-again')!;
+  const wait = root.querySelector<HTMLElement>('.res-wait')!;
+  again.addEventListener('click', () => onRaceAgain());
+  let key = '';
+
+  return {
+    update() {
+      const show = session.race.phase === 'results';
+      root.hidden = !show;
+      if (!show) return;
+      again.hidden = !session.isHost;
+      const host = session.players.find((p) => p.id === session.hostId);
+      wait.textContent = session.isHost ? '' : `Waiting for ${host?.name ?? 'the host'} to start the next race…`;
+
+      const k = JSON.stringify(session.standings) + session.players.map((p) => p.name + p.color).join();
+      if (k === key) return;
+      key = k;
+
+      const winner = session.standings[0];
+      const fastest = Math.min(...session.standings.map((s) => s.bestLap ?? Infinity));
+      const nameOf = (id: number) => esc(session.playerName(id));
+      const colorOf = (id: number) => hex(CAR_COLORS[session.players.find((p) => p.id === id)?.color ?? 0] ?? 0xffffff);
+
+      // Podium order on screen: 2nd, 1st, 3rd.
+      podium.innerHTML = [1, 0, 2]
+        .map((i) => session.standings[i])
+        .filter((s) => s && !s.dnf)
+        .map(
+          (s) => `<div class="res-step p${s!.pos}">
+            <div class="res-car" style="background:${colorOf(s!.id)}"></div>
+            <div class="res-name">${nameOf(s!.id)}</div>
+            <div class="res-block"><span>${s!.pos}</span></div>
+          </div>`,
+        )
+        .join('');
+
+      tbody.innerHTML = session.standings
+        .map((s) => {
+          const time = s.dnf
+            ? 'DNF'
+            : s.id === winner?.id
+              ? formatTime(s.finishTime)
+              : `+${formatTime((s.finishTime ?? 0) - (winner?.finishTime ?? 0))}`;
+          const best = s.bestLap === fastest && s.bestLap !== null ? `<b class="purple">${formatTime(s.bestLap)}</b>` : formatTime(s.bestLap);
+          return `<tr class="${s.id === session.myId ? 'me' : ''}">
+            <td>${s.dnf ? '–' : s.pos}</td>
+            <td><span class="dot" style="background:${colorOf(s.id)}"></span>${nameOf(s.id)}</td>
+            <td>${time}</td><td>${best}</td></tr>`;
+        })
+        .join('');
+    },
+  };
+}
