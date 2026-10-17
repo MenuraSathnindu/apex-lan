@@ -4,7 +4,8 @@ import { decodeC2S, decodeS2C, encode } from './codec.ts';
 describe('codec', () => {
   it('round-trips messages', () => {
     expect(decodeC2S(encode({ t: 'ping', clientTime: 12.5 }))).toEqual({ t: 'ping', clientTime: 12.5 });
-    expect(decodeS2C(encode({ t: 'playerCount', count: 3 }))).toEqual({ t: 'playerCount', count: 3 });
+    const race = { t: 'race', race: { phase: 'countdown', raceId: 2, startsAt: 123 } } as const;
+    expect(decodeS2C(encode(race))).toEqual(race);
   });
 
   it('rejects malformed input', () => {

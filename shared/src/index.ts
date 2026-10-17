@@ -14,3 +14,4 @@ export * from './track/spline.ts';
 export * from './track/track.ts';
 export * from './track/tracks.ts';
 export * from './track/validate.ts';
+export * from './protocol/carState.ts';

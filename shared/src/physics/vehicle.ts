@@ -40,7 +40,8 @@ export interface WheelState {
   inContact: boolean;
 }
 
-function wheelConnection(spec: CarSpec, i: number): Vec3Like {
+/** Wheel attachment point in chassis space (FL, FR, RL, RR). */
+export function wheelConnection(spec: CarSpec, i: number): Vec3Like {
   const w = spec.wheels;
   const left = i % 2 === 0; // FL, RL
   const front = i < 2;
