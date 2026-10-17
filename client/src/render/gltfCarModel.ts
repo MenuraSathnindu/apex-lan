@@ -26,17 +26,35 @@ function roleOf(material: THREE.Material): MaterialRole | null {
  *    and moves it so its wheels line up with the physics wheels at rest;
  *  - detaches the four wheel nodes into centred wrappers (CarModel contract);
  *  - swaps in physically based paint / glass / light materials by material name.
+ * Loads the file once; the returned factory clones it per car (each with its own paint).
  * Throws if the file is missing or the wheel nodes can't be found.
  */
-export async function loadGltfCarModel(url: string, spec: CarSpec, paint: THREE.ColorRepresentation): Promise<CarModel> {
+export async function loadGltfCarFactory(url: string, spec: CarSpec): Promise<CarFactory> {
   const loader = new GLTFLoader();
   const draco = new DRACOLoader();
   draco.setDecoderPath('draco/'); // copied from three by the Vite plugin, works offline
   loader.setDRACOLoader(draco);
   const gltf = await loader.loadAsync(url);
   draco.dispose();
+  const source = gltf.scene;
+  // Build one up front so a broken file fails here (and the caller can fall back).
+  const first = buildCar(source.clone(true), spec, 0xffffff);
+  let firstUsed = false;
+  return (paint) => {
+    if (!firstUsed) {
+      firstUsed = true;
+      first.setPaint(paint);
+      return first.model;
+    }
+    // Clones share geometry; buildCar gives each car its own materials.
+    return buildCar(source.clone(true), spec, paint).model;
+  };
+}
 
-  const model = gltf.scene;
+/** Creates a car model in a given paint colour. */
+export type CarFactory = (paint: THREE.ColorRepresentation) => CarModel;
+
+function buildCar(model: THREE.Object3D, spec: CarSpec, paint: THREE.ColorRepresentation) {
   const fit = new THREE.Group();
   fit.rotation.y = CAR_MODEL.yawOffset;
   fit.add(model);
@@ -81,6 +99,7 @@ export async function loadGltfCarModel(url: string, spec: CarSpec, paint: THREE.
   });
 
   // Materials.
+  const paints: THREE.MeshPhysicalMaterial[] = [];
   const brakeLights: THREE.MeshStandardMaterial[] = [];
   const glass: THREE.MeshPhysicalMaterial[] = [];
   const cache = new Map<THREE.Material, THREE.Material>();
@@ -91,13 +110,15 @@ export async function loadGltfCarModel(url: string, spec: CarSpec, paint: THREE.
     switch (roleOf(src)) {
       case 'paint': {
         const p = CAR_MODEL.paint;
-        out = new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           color: paint,
           metalness: p.metalness,
           roughness: p.roughness,
           clearcoat: p.clearcoat,
           clearcoatRoughness: p.clearcoatRoughness,
         });
+        paints.push(m);
+        out = m;
         break;
       }
       case 'glass': {
@@ -129,10 +150,12 @@ export async function loadGltfCarModel(url: string, spec: CarSpec, paint: THREE.
     });
   }
 
-  return {
+  const result: CarModel = {
     body,
     wheels: [wrappers[0]!, wrappers[1]!, wrappers[2]!, wrappers[3]!],
     brakeLights,
     glass,
+    paint: paints,
   };
+  return { model: result, setPaint: (c: THREE.ColorRepresentation) => paints.forEach((m) => m.color.set(c)) };
 }

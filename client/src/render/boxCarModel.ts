@@ -49,5 +49,10 @@ export function createBoxCarModel(spec: CarSpec, paint: THREE.ColorRepresentatio
     return g;
   };
 
-  return { body, wheels: [wheel(), wheel(), wheel(), wheel()], brakeLights: [tailMat] };
+  return { body, wheels: [wheel(), wheel(), wheel(), wheel()], brakeLights: [tailMat], paint: [paintMat] };
+}
+
+/** Factory for the placeholder car (same shape as the GLB factory). */
+export function boxCarFactory(spec: CarSpec) {
+  return (paint: THREE.ColorRepresentation) => createBoxCarModel(spec, paint);
 }

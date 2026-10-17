@@ -17,6 +17,8 @@ export interface CarModel {
   brakeLights?: THREE.MeshStandardMaterial[];
   /** Glass materials; quality presets switch refraction (transmission) on/off. */
   glass?: THREE.MeshPhysicalMaterial[];
+  /** Body paint materials, recoloured when a player picks a different colour. */
+  paint?: THREE.MeshStandardMaterial[];
 }
 
 /** Places a CarModel from the physics pose + per-wheel state every frame. */
@@ -58,6 +60,10 @@ export class CarView {
     }
   }
 
+  setPaint(color: THREE.ColorRepresentation): void {
+    for (const m of this.model.paint ?? []) m.color.set(color);
+  }
+
   setBraking(on: boolean): void {
     const intensity = on ? CAR_MODEL.brakeLightOn : CAR_MODEL.brakeLightIdle;
     for (const m of this.model.brakeLights ?? []) m.emissiveIntensity = intensity;
@@ -73,13 +79,18 @@ export class CarView {
     }
   }
 
+  /**
+   * Removes the car and frees its materials. Geometry is left alone: cars cloned from the
+   * same GLB share it.
+   */
   dispose(): void {
     this.root.removeFromParent();
+    const seen = new Set<THREE.Material>();
     this.root.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      mesh.geometry.dispose();
-      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) m.dispose();
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) seen.add(m);
     });
+    for (const m of seen) m.dispose();
   }
 }
