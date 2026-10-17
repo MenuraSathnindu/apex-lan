@@ -1,4 +1,4 @@
-import { CAR_COLORS, NAME_MAX_LENGTH, type C2S, type PlayerInfo, type RaceState, type S2C } from '@apex/shared';
+import { CAR_COLORS, NAME_MAX_LENGTH, RACE, type C2S, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
 
 const PROFILE_KEY = 'apex.profile';
 const SESSION_KEY = 'apex.session';
@@ -35,14 +35,26 @@ export class Session {
   myId = 0;
   hostId = 0;
   players: PlayerInfo[] = [];
-  race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0 };
+  race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0 };
   connected = false;
   full = false;
+  /** Latest ranking from the server (empty in the lobby). */
+  standings: Standing[] = [];
+  /** Lap events not yet shown by the HUD. */
+  readonly lapEvents: LapEvent[] = [];
   profile: Profile = read<Profile>(() => localStorage, PROFILE_KEY) ?? { name: '', color: 0 };
   private sessionId: string | null = read<string>(() => sessionStorage, SESSION_KEY);
 
   get me(): PlayerInfo | undefined {
     return this.players.find((p) => p.id === this.myId);
+  }
+
+  get myStanding(): Standing | undefined {
+    return this.standings.find((s) => s.id === this.myId);
+  }
+
+  playerName(id: number): string {
+    return this.players.find((p) => p.id === id)?.name ?? `#${id}`;
   }
 
   get isHost(): boolean {
@@ -81,7 +93,14 @@ export class Session {
         this.players = msg.players;
         return true;
       case 'race':
+        if (msg.race.phase === 'lobby' || msg.race.raceId !== this.race.raceId) this.standings = [];
         this.race = msg.race;
+        return true;
+      case 'standings':
+        this.standings = msg.standings;
+        return true;
+      case 'lap':
+        this.lapEvents.push(msg.e);
         return true;
       case 'full':
         this.full = true;
