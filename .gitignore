@@ -8,5 +8,6 @@ dist/
 client/public/hdri/
 client/public/textures/
 client/public/models/
+client/public/sounds/
 # Copied from three by the Vite plugin
 client/public/draco/

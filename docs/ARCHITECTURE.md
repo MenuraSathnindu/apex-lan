@@ -40,7 +40,7 @@ apex-lan/
 │  └─ src/
 │     ├─ index.ts
 │     ├─ constants.ts        # TICK_RATE, SNAPSHOT_RATE, MAX_PLAYERS, INTERP_DELAY_MS ...
-│     ├─ tuning.ts           # ALL gameplay tuning: CAR (handling), CAMERA, INPUT
+│     ├─ tuning.ts           # ALL tuning: CAR, CAMERA, INPUT, graphics, RACE, DRIVETRAIN, FX, AUDIO, HUD
 │     ├─ input.ts            # CarInput (what clients send each tick)
 │     ├─ protocol/
 │     │  ├─ messages.ts      # discriminated-union message types (C2S / S2C)
@@ -48,6 +48,8 @@ apex-lan/
 │     ├─ physics/
 │     │  ├─ rapier.ts        # single place that imports & inits rapier3d-compat
 │     │  ├─ vehicle.ts       # createVehicle / stepVehicle / resetVehicle / readWheelStates
+│     │  ├─ drivetrain.ts    # sound/HUD gearbox: gear + rpm from speed and throttle (+ test)
+│     │  ├─ vehicleFx.ts     # read-only: per-tyre slip, chassis contacts (impacts/scrapes) (+ test)
 │     │  ├─ handlingMetrics.ts # headless scenarios → numbers (tests + `npm run handling`)
 │     │  ├─ collisionGroups.ts
 │     │  └─ world.ts         # createWorld(), addStaticBoxes()
@@ -84,7 +86,8 @@ apex-lan/
    └─ src/
       ├─ main.ts             # bootstrap: init Rapier, renderer, connect, start loop
       ├─ core/
-      │  └─ loop.ts          # fixed-step physics accumulator + rAF render
+      │  ├─ loop.ts          # fixed-step physics accumulator + rAF render
+      │  └─ profiler.ts      # physics CPU / render CPU / GPU timer per frame (FPS counter)
       ├─ net/
       │  ├─ socket.ts        # WS wrapper, reconnect, ping burst
       │  ├─ clock.ts         # ServerClock (offset from low-RTT pongs)
@@ -92,15 +95,18 @@ apex-lan/
       ├─ game/
       │  ├─ session.ts       # identity (sessionStorage), profile (localStorage), room state
       │  ├─ remoteCars.ts    # remote cars: buffer + kinematic proxy + model + name tag
-      │  └─ raceController.ts # wrong-way, auto-respawn at last checkpoint, manual respawn
+      │  ├─ raceController.ts # wrong-way, auto-respawn at last checkpoint, manual respawn
+      │  ├─ localCarFx.ts    # per tick: gearbox, tyre slip, scrapes, impacts of our car (sound + effects)
+      │  └─ userSettings.ts  # pause-menu settings store (volumes, camera, bindings, FPS) in localStorage
       ├─ input/
       │  ├─ keyboard.ts
+      │  ├─ bindings.ts      # rebindable actions, defaults, key labels (+ test)
       │  ├─ gamepad.ts
       │  └─ inputController.ts # keyboard + gamepad -> shared CarInput
       ├─ render/
       │  ├─ graphics.ts      # renderer + scene + camera + resize; applies quality presets
       │  ├─ environment.ts   # HDRI (or procedural Sky) → PMREM, sun detection, follow-shadow, fog
-      │  ├─ post.ts          # postprocessing: N8AO → bloom + ACES + vignette → SMAA
+      │  ├─ post.ts          # postprocessing: N8AO → [FXAA] + bloom + ACES + vignette → [SMAA]
       │  ├─ quality.ts       # QualityManager: Low/Medium/High, persisted, FPS auto-pick
       │  ├─ textures.ts      # PBR texture sets with procedural fallbacks
       │  ├─ carView.ts       # CarModel contract + CarView (places wheels from sim, brake lights)
@@ -109,10 +115,13 @@ apex-lan/
       │  ├─ trackView.ts     # meshes from shared track mesh data + materials
       │  ├─ scenery.ts       # instanced trees, tyre walls, billboards, grandstand, gantry
       │  ├─ cameraRig.ts     # chase (lag, speed-based FOV) + hood cameras
-      │  └─ effects/         # (later) skid marks, tire smoke, sparks
-      ├─ audio/              # WebAudio engine/tire/impact sounds
+      │  └─ effects/         # skidMarks (ring-buffer mesh), smoke (point sprites), sparks (HDR streaks), effects (glue)
+      ├─ audio/
+      │  ├─ audioSystem.ts   # AudioContext, buses + limiter, unlock, listener, one-shots, optional files
+      │  ├─ synth.ts         # procedural placeholder sounds (V8 pulses, screech, scrape, thuds, pops)
+      │  └─ carVoice.ts      # one car's engine/screech/scrape/wind loops (positional for remote cars)
       ├─ types/n8ao.d.ts     # n8ao ships no types
-      └─ ui/                 # HTML/CSS overlay: HUD, settings, loading, lobby, countdown, race HUD, results, name tags
+      └─ ui/                 # HTML/CSS overlay: HUD (speedometer, minimap), pause menu, FPS counter, loading, lobby, countdown, race HUD, results, name tags
 ```
 
 **Why consume `/shared` as TypeScript source:** no separate build step or watch process for
@@ -338,34 +347,81 @@ All assets are optional with procedural fallbacks; see `docs/ASSETS.md` and `npm
 - **Scenery:** `InstancedMesh` trees (two kinds, per-instance colour), tyre walls on corner
   exits, billboards on straights, plus a grandstand and start gantry. Placement is seeded
   (identical on every client) and kept outside the barriers.
-- **Effects (later):** skid marks, tyre smoke, sparks.
+- **Effects:** skid marks, tyre smoke, sparks (§5.7).
 
 ### 5.4 Post-processing
 `postprocessing` (pmndrs) `EffectComposer` with HalfFloat buffers:
-`RenderPass → N8AOPostPass (High only, half-res) → EffectPass(Bloom, ACES ToneMapping,
-Vignette) → EffectPass(SMAA)`. The chain is rebuilt when the quality level changes.
+`RenderPass → N8AOPostPass (High only, half-res) → EffectPass([FXAA], Bloom, ACES ToneMapping,
+Vignette) → [EffectPass(SMAA)]`. High uses SMAA in its own pass after tone mapping; Low/Medium
+use FXAA merged into the main effect pass, because on an integrated GPU the extra full-screen
+pass cost more than the AA itself. The chain is rebuilt when the quality level changes.
 
 ### 5.5 Camera
-Chase camera with critically-damped spring toward a target behind & above the car, look-ahead
-along velocity, speed-based FOV (60° → 75°), slight shake on high speed / impacts.
-Alternate cameras: bumper, hood. Orbit camera in lobby.
+Chase camera: frame-rate-independent exponential smoothing toward a point behind & above
+the car (heading only, so drifts and bumps don't shake it), look-ahead, speed-based FOV
+(60° → 76°). Hood camera with light rotation smoothing. `C` cycles them. The pause menu sets
+the default view, chase distance (70–160%), an FOV offset (−10…+15°) and speed-FOV on/off.
 
 ### 5.6 Quality presets
-`low | medium | high` (`QUALITY` in `tuning.ts`), chosen in the settings panel (Esc / ⚙) and
+`low | medium | high` (`QUALITY` in `tuning.ts`), chosen in the pause menu (Esc → Graphics) and
 saved in `localStorage`. **Auto** (default) starts at High, skips 1.5 s of warm-up, averages
 FPS over 2.5 s and steps down while it's below 50. It never steps back up on its own.
 
 | | Low | Medium | High |
 |---|---|---|---|
-| Pixel ratio cap | 1.0 | 1.25 | 2.0 |
-| Shadows | off | 2048, radius 3, ±35 m | 2048, radius 4, ±40 m |
+| Pixel ratio cap | 1.0 | 1.0 | 2.0 |
+| Shadows | off | 1024, radius 2, ±30 m | 2048, radius 4, ±40 m |
 | AO / Bloom | — / — | — / bloom | N8AO (half-res) / bloom |
+| Anti-aliasing | FXAA (merged) | FXAA (merged) | SMAA high |
 | Glass | transparent | transparent | transmission |
 | Scenery density | 30% | 65% | 100% |
+| Particle budget | 35% | 70% | 100% |
 | Texture anisotropy | 2 | 4 | 8 |
 
-Measured on the host laptop's GPU (headless, 720p): AO plus a 4096 shadow map was the
-expensive combination, so High uses 2048 + half-res AO.
+**Medium is profiled to hold 60 fps on the host laptop (Intel UHD iGPU)** with 8 cars racing
+and tyre smoke in view (`window.__apex.profiler`, menu → Show FPS counter). Findings: CPU is
+small (physics ≈ 0.4 ms, render submission ≈ 1.5 ms); GPU time is the limit. SMAA's three
+passes (~2.5 ms), the 2048 shadow map (~3 ms more than 1024 at 1080p) and pixel ratio > 1 were
+the big costs, so Medium dropped them: 1600×900 went from ~70 to ~98 fps uncapped (GPU
+13.4 → 10.0 ms), native 1920×1080 runs ~73 fps (13.4 ms). Cars also use LOD: the cockpit,
+steering wheel, chrome, brake discs… (`CAR_MODEL.detailMeshes`, ~190k of the Ferrari's 360k
+triangles) never cast shadows and are hidden on remote cars beyond 30 m.
+
+### 5.7 Effects (`client/src/render/effects/`)
+- Input comes from read-only helpers in `/shared` (`vehicleFx.ts`): per-tyre **slip** (sideways
+  sliding at the contact patch + locked rear wheels on the handbrake + a little fake wheelspin
+  at launch) and **chassis contacts** (barrier/car/ground, contact point, normal, impact Δv,
+  slide speed). `LocalCarFx` gathers them every physics tick for our car; remote cars use their
+  interpolated sideways velocity and a ray-cast for the surface.
+- **Skid marks:** one dynamic mesh, a ring buffer of 4000 quads drawn with multiply blending
+  (they darken the road under any light), only on asphalt/curbs, wiped at each race start.
+- **Tyre smoke:** pooled point sprites with a canvas puff texture, one draw call; budget
+  scales with the quality preset.
+- **Sparks:** additive line streaks with HDR colour so bloom makes them glow; a stream while
+  scraping along a barrier, a burst on hard hits.
+- Effect objects start visible so `compileAsync` warms their shaders (no hitch at the first drift).
+
+### 5.8 Audio (`client/src/audio/`)
+- One `AudioContext`, mixer: engine / effects / ui buses → master → limiter. Unlocked on the
+  first key or click (browser autoplay rules), suspended while the tab is hidden.
+- **Placeholder sounds are generated in code** at startup (`synth.ts`): a V8 loop built from
+  individual exhaust pulses (so `playbackRate = rpm / baseRpm` behaves like a real engine), a
+  resonant tyre screech, metal scrape, wind noise, impact thuds and exhaust pops. Optional
+  recordings in `client/public/sounds/` replace them (`AUDIO.files`).
+- **Gearbox for sound/HUD only** (`drivetrain.ts`): 6 speeds, throttle-dependent upshifts,
+  braking downshifts, launch clutch slip, rev limiter, a short throttle cut on shifts.
+  Handling still uses the constant-power engine model.
+- `CarVoice` per car: engine (pitch, low-pass and gain from rpm and load), screech (slip, not
+  on grass), scrape, wind (own car). Remote cars are positional (`PannerNode`), with throttle
+  guessed from their acceleration. Countdown beeps on 3-2-1-GO.
+
+### 5.9 HUD & pause menu (`client/src/ui/`)
+- HUD: canvas rev dial + digital km/h + gear (bottom right), north-up minimap with every car
+  (bottom left, redrawn at 30 Hz from a pre-drawn track layer), current key bindings as hints.
+- Pause menu (Esc / ☰ / gamepad Start): Audio (4 volumes, mute), Graphics (presets, FPS
+  counter with CPU/GPU breakdown), Controls (rebind every driving action, two keys each),
+  Camera. Multiplayer can't pause: the car gets neutral input while it's open. Settings live in
+  `localStorage` (`apex.settings`, validated on load).
 
 ---
 
@@ -381,8 +437,8 @@ Each phase ends with a **playable/demoable** state and explicit exit criteria.
 | **3** | ~~**Networking v1**~~ → **client-authoritative relay** (done 2026-10-17): Room on server, 30 Hz state relay, snapshot interpolation, kinematic remote proxies, name tags, rejoin, bots | 2+ windows see each other drive smoothly and can bump; reload mid-race resumes; 8 players |
 | **4** | ~~**Prediction & reconciliation**~~ — not needed under the client-authoritative model | — |
 | **5** | **Race flow** ✅ — lobby (name/colour/laps), countdown with input lock, grid start, live positions, finish grace, results podium, race again | Full race with friends start → results without reloading |
-| **6** | **Visual realism** — HDRI IBL, glTF cars with paint/clearcoat, shadows, post FX, PBR road, scenery, skid marks/smoke, quality presets | Looks "realistic-ish"; ≥60 fps on host laptop at Medium |
-| **7** | **Audio & polish** — engine (RPM-pitched loops), tire squeal, impacts, HUD/minimap, settings menu, camera modes | Feels like a game |
+| **6** | **Visual realism** (mostly done) — HDRI IBL, glTF cars with paint/clearcoat, shadows, post FX, PBR road, scenery, skid marks/smoke/sparks ✅, quality presets, car LOD. Left: visual body roll, real tree models | Looks "realistic-ish"; ≥60 fps on host laptop at Medium ✅ |
+| **7** | **Audio & polish** ✅ — engine (rpm-pitched, gearbox), tyre screech, scrape, wind, impacts, countdown beeps, speedometer/gear/minimap HUD, pause menu (volumes, quality, key bindings, camera) | Feels like a game |
 | **8** | **Optimization & robustness** — binary codec, snapshot quantization, reconnect, tab-hidden handling, perf profiling, 2nd track | 8 players stable for a full race; bandwidth per client < 50 KB/s |
 
 ---

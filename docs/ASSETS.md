@@ -47,6 +47,22 @@ Model by [vicent091036 on Sketchfab](https://sketchfab.com/models/57bf6cc5693142
 redistributed in the three.js examples. It's Draco-compressed. The decoder is copied from
 three into `client/public/draco/` automatically when Vite starts, so it also works offline.
 
+### Sounds (optional, no download needed)
+The game **generates placeholder sounds in code** (engine, tyre screech, barrier scrape,
+impacts), so there is nothing to download. To use real recordings instead, drop any of these
+into `client/public/sounds/` (git-ignored; any format the browser decodes. `.ogg` works in
+Chrome, Edge and Firefox; change the names in `AUDIO.files` for `.mp3`/`.wav`):
+
+| File | What it should be |
+|---|---|
+| `sounds/engine.ogg` | A seamless engine loop **on load at a steady rpm**. Set `AUDIO.files.engineFileRpm` to that rpm (default 3000); pitch is scaled from it. |
+| `sounds/skid.ogg` | A seamless tyre-screech loop. |
+| `sounds/scrape.ogg` | A seamless metal-scrape loop. |
+| `sounds/impact.ogg` | One short collision thud/crunch. |
+
+Only use CC0 / CC-BY sounds (e.g. freesound.org filtered by licence) and add them to
+`client/public/CREDITS.md`. The console reports how many sound files were found.
+
 ## Final layout
 ```
 client/public/
@@ -57,6 +73,7 @@ client/public/
 └─ textures/
    ├─ asphalt_02_diff_2k.jpg   asphalt_02_nor_gl_2k.jpg   asphalt_02_rough_2k.jpg
    └─ leafy_grass_diff_2k.jpg  leafy_grass_nor_gl_2k.jpg  leafy_grass_rough_2k.jpg
+   (optional) sounds/engine.ogg skid.ogg scrape.ogg impact.ogg
 ```
 
 ## Swapping in different assets

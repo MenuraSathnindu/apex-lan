@@ -8,11 +8,12 @@ phase. If a decision changes, update that doc in the same change.
 
 ## Current phase
 
-> Phases 0–2 done; multiplayer (client-authoritative, replaces 3–4) done; **Phase 5 race flow done (2026-10-17)**:
-> countdown with input lock, checkpoints + server-validated laps, live standings, lap times, wrong-way warning,
-> auto-respawn, results podium, "Race again". Most of Phase 6 visuals done (pulled forward).
-> **Next: Phase 7 — audio & polish** (engine/tyre sounds, minimap). Phase 6 leftovers: visual body roll, skid marks/smoke,
-> real tree models. Phase 8: binary codec, perf. Update this line when a phase's exit criteria are met.
+> Phases 0–2, multiplayer (client-authoritative, replaces 3–4) and Phase 5 done. **Phase 7 audio & polish done
+> (2026-10-18)**: Web Audio engine with a sound gearbox, tyre screech, scrape, wind, impacts, countdown beeps;
+> skid marks, tyre smoke, sparks; speedometer/gear/minimap HUD; pause menu (volumes, quality, key bindings,
+> camera); Medium profiled to hold 60 fps on the host's Intel UHD iGPU. Most of Phase 6 done.
+> **Next: Phase 8 — robustness** (binary codec, quantization, 2nd track). Phase 6 leftovers: visual body roll,
+> real tree models. Update this line when a phase's exit criteria are met.
 
 ## Stack
 - TypeScript everywhere (strict). npm workspaces monorepo.
@@ -50,12 +51,16 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 ## Conventions
 - **Units:** metres, seconds, kilograms, radians. **Y up. Car forward = +Z** (glTF convention), so chassis left = +X. Wheel order everywhere: FL, FR, RL, RR.
 - **Steering sign:** `CarInput.steer` +1 = right. Rapier wheel steering angle + = left, so `vehicle.ts` negates it.
-- **All tuning** lives in `shared/src/tuning.ts`: car handling + surfaces (`CAR`), `CAMERA`, `INPUT`, and graphics (`ASSETS`, `ENVIRONMENT`, `CAR_MODEL`, `QUALITY` presets, `AUTO_QUALITY`, `POST`). Engine/net constants (tick rate, ports, interp delay) live in `shared/src/constants.ts`. No magic numbers in logic.
+- **All tuning** lives in `shared/src/tuning.ts`: car handling + surfaces (`CAR`), `CAMERA`, `INPUT`, graphics (`ASSETS`, `ENVIRONMENT`, `CAR_MODEL` incl. LOD, `QUALITY` presets, `AUTO_QUALITY`, `POST`), `RACE`, the sound/HUD gearbox (`DRIVETRAIN`), effects (`FX`), `AUDIO` and `HUD`. Engine/net constants (tick rate, ports, interp delay) live in `shared/src/constants.ts`. No magic numbers in logic.
 - Car visuals go through `CarModel` (`client/src/render/carView.ts`): `{ body, wheels[4], brakeLights?, glass? }` with wheels centred, axle along X. `gltfCarModel.ts` fits any GLB to the physics car (wheelbase scale, wheel alignment, material swap by name); `boxCarModel.ts` is the fallback.
 - **Every asset is optional.** Missing files → procedural fallback + a `[assets]` console warning. Keep it that way: the game must run straight after `git clone && npm install`.
 - Tracks are pure data (`shared/src/track/tracks.ts`) → `buildTrack()` → mesh data for the client and colliders for physics. Validate new layouts with `track.test.ts` (corner radius, self-separation).
 - Race rules/tuning: `RACE` in `tuning.ts` (laps, checkpoint spacing, finish grace, respawn timers). Checkpoints are invisible gates every ~100 m (`buildCheckpoints`), gate 0 = start line; cars start behind it, so lap 1 includes the run from the grid.
 - Client race helpers (`client/src/game/raceController.ts`): wrong-way, auto-respawn (stuck on grass / past barriers / flipped) and R = respawn at the last checkpoint, using the server's `nextGate` as the truth.
+- Sound & effects read the sim through `shared/src/physics/vehicleFx.ts` (tyre slip, chassis contacts) and `drivetrain.ts` (gear/rpm), gathered per tick by `client/src/game/localCarFx.ts`. They never change the simulation; the gearbox doesn't affect handling.
+- Audio: everything goes through `AudioSystem` (buses: engine / effects / ui → master → limiter). Sounds are procedural (`audio/synth.ts`); files in `client/public/sounds/` are optional overrides (`AUDIO.files`). Per-car loops live in `CarVoice`.
+- Effects (`render/effects/`) are pooled, single-draw-call systems with fixed buffers. Keep it that way (no per-particle objects); budgets scale with `QUALITY.particles`.
+- Player preferences (volumes, camera, key bindings, FPS counter) go through `SettingsStore` (`game/userSettings.ts`, `localStorage` `apex.settings`, sanitized on load). Graphics quality keeps its own key (`apex.graphics`). Driving keys come from `input/bindings.ts`; never hard-code key codes elsewhere.
 - Surfaces: tag colliders with `tagSurface(world, collider, 'asphalt' | 'curb' | 'grass')`. `stepVehicle` scales grip/drag per wheel from `CAR.surfaces`.
 - Colour pipeline: renderer uses `NoToneMapping`; ACES Filmic happens in the post chain (`render/post.ts`), output sRGB. Don't set `renderer.toneMapping`.
 - Files: `camelCase.ts`; types/interfaces `PascalCase`; constants `SCREAMING_SNAKE_CASE`.
@@ -72,8 +77,8 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 2. **Track & laps** ✅ — spline track, colliders + meshes, checkpoint gates, server-validated laps, respawn, race HUD
 3. ~~Networking v1~~ / 4. ~~Prediction~~ — **replaced** by the client-authoritative relay (done).
 5. **Race flow** ✅ — lobby, laps setting, host start, countdown (input locked until GO), live positions, finish grace, results podium, race again
-6. **Visual realism** — HDRI IBL, glTF cars, shadows, post FX, PBR road, scenery, effects, quality presets
-7. **Audio & polish** — engine/tire audio, HUD/minimap, settings, camera modes
+6. **Visual realism** (mostly ✅) — HDRI IBL, glTF cars + LOD, shadows, post FX, PBR road, scenery, skid marks/smoke/sparks, quality presets. Left: body roll, tree models
+7. **Audio & polish** ✅ — engine/tyre/impact audio, speedometer/gear/minimap HUD, pause menu (audio, graphics, key bindings, camera)
 8. **Optimization & robustness** — binary codec, quantization, reconnect, perf, 2nd track
 
 Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unless asked; do leave seams for it.
@@ -102,4 +107,8 @@ Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unl
 - Host = earliest-joined *connected* player, so host passes on during a disconnect and comes back on rejoin. Rejoin = same `sessionId` within `REJOIN_GRACE_MS` (30 s); a duplicate tab (same session, original still live) gets a new identity.
 - Vite dev answered some module requests with **408**: Node's 60 s `headersTimeout` killed browser pre-connected sockets during slow loads. `vite.config.ts` raises it (dev only; prod serves a single bundle).
 - Name tags project with `camera.updateMatrixWorld()` first. three only updates camera matrices inside `render()`, so without it tags trail the car at speed.
+- **Perf target: Medium ≥ 60 fps on the host laptop (Intel UHD iGPU).** It is GPU-bound; CPU per frame is ~2 ms. Before adding anything per-pixel or a full-screen pass to Medium, measure it with menu → Show FPS counter (GPU time via `EXT_disjoint_timer_query_webgl2`). Known costs at 1080p: each extra full-screen post pass ~2 ms, 2048 vs 1024 shadow map ~3 ms, bloom ~2–3 ms. That's why Low/Medium merge FXAA into the tone-mapping pass and only High runs SMAA.
+- Headless perf runs: with vsync, headless Edge ticks frames at 144 Hz, so frame times come in multiples of 6.9 ms (13.8 ms = "two ticks", not a stall). `--disable-gpu-vsync --disable-frame-rate-limit` uncaps fps but queues frames (huge p99), so use average fps / GPU ms from it, not percentiles.
+- Bot scripts in perf tests: a killed bot's slot stays reserved for `REJOIN_GRACE_MS` (30 s), so back-to-back 8-player runs see "room full". Wait 35 s between runs. Killing `node tsx …` can leave the child running; kill by command line.
+- Browsers start the `AudioContext` suspended until a key press or click; `AudioSystem` resumes it then. Vite answers a missing public file with `index.html` (200), so sound loading checks the content type.
 - Windows: launch tsx scripts via `node node_modules/tsx/dist/cli.mjs` (as `npm run handling` does). `npx tsx` with JSON args in Git Bash hung.

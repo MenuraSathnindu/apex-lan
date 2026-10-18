@@ -8,4 +8,5 @@
 | Leafy Grass textures | Poly Haven | https://polyhaven.com/a/leafy_grass | CC0 |
 | Draco decoder (`draco/`) | Google | Copied from `three/examples/jsm/libs/draco` | Apache-2.0 |
 
-Everything else (track, trees, props, curbs, barriers, billboards) is generated in code.
+Everything else (track, trees, props, curbs, barriers, billboards, and all sounds: engine,
+tyre screech, scrape, wind, impacts, beeps) is generated in code.
