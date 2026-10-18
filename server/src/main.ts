@@ -6,6 +6,7 @@ import { DEV_CLIENT_PORT, SERVER_PORT, SNAPSHOT_RATE, WS_PATH, decodeC2S, encode
 import { Room, type Connection } from './game/room.ts';
 import { createStaticHandler } from './net/staticFiles.ts';
 import { lanAddresses } from './util/lanAddress.ts';
+import { renderQr } from './util/qr.ts';
 
 const isDev = process.argv.includes('--dev');
 const port = Number(process.env.PORT ?? SERVER_PORT);
@@ -59,12 +60,22 @@ http.on('error', (err: NodeJS.ErrnoException) => {
 http.listen(port, '0.0.0.0', () => {
   const joinPort = isDev ? DEV_CLIENT_PORT : port;
   const ips = lanAddresses();
-  console.log(`\napex-lan server listening on :${port}${isDev ? ' (dev — join via Vite)' : ''}`);
-  console.log(`  Local:   http://localhost:${joinPort}`);
+  const main = ips.find((a) => !a.virtual);
+  const log = console.log;
+  log(`\napex-lan server listening on :${port}${isDev ? ' (dev — join via Vite)' : ''}`);
+  log(`  Local:   http://localhost:${joinPort}`);
   for (const { address, iface, virtual } of ips) {
     const url = `http://${address}:${joinPort}`;
-    console.log(`  ${virtual ? 'Other:  ' : 'Join at:'} ${url.padEnd(28)} (${iface}${virtual ? ', probably VPN/VM' : ''})`);
+    log(`  ${virtual ? 'Other:  ' : 'Join at:'} ${url.padEnd(28)} (${iface}${virtual ? ', probably VPN/VM' : ''})`);
   }
-  if (ips.length === 0) console.log('  (no LAN IPv4 address found — are you on Wi-Fi?)');
-  console.log('');
+  if (!main) {
+    log('  (no LAN IPv4 address found — are you on Wi-Fi?)\n');
+    return;
+  }
+  // QR for the most likely join URL (Wi-Fi first). APEX_QR=0 turns it off.
+  if (process.env.APEX_QR !== '0') {
+    log(`\n  Scan to open http://${main.address}:${joinPort} (${main.iface}):\n`);
+    log(renderQr(`http://${main.address}:${joinPort}`, { color: !process.env.NO_COLOR }).replace(/^/gm, '  '));
+  }
+  log(`\n  Friends can't connect? See HOSTING.md (firewall, network profile, VPN).\n`);
 });
