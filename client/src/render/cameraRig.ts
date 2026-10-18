@@ -13,8 +13,18 @@ const smoothing = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
 
 const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
+export interface CameraOptions {
+  /** Chase distance/height multiplier. */
+  distance: number;
+  /** Degrees added to the field of view. */
+  fovOffset: number;
+  /** Widen the chase FOV with speed. */
+  speedFov: boolean;
+}
+
 export class CameraRig {
   mode: CameraMode = 'chase';
+  options: CameraOptions = { distance: 1, fovOffset: 0, speedFov: true };
   private snap = true;
   private yaw = 0;
   private readonly fwd = new THREE.Vector3();
@@ -25,8 +35,14 @@ export class CameraRig {
 
   constructor(readonly camera: THREE.PerspectiveCamera) {}
 
-  cycle(): void {
-    this.mode = CAMERA_MODES[(CAMERA_MODES.indexOf(this.mode) + 1) % CAMERA_MODES.length]!;
+  cycle(): CameraMode {
+    this.setMode(CAMERA_MODES[(CAMERA_MODES.indexOf(this.mode) + 1) % CAMERA_MODES.length]!);
+    return this.mode;
+  }
+
+  setMode(mode: CameraMode): void {
+    if (mode === this.mode) return;
+    this.mode = mode;
     this.snap = true;
   }
 
@@ -46,7 +62,8 @@ export class CameraRig {
     this.yaw = this.snap ? carYaw : this.yaw + wrapAngle(carYaw - this.yaw) * smoothing(c.yawLag, dt);
     this.fwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
 
-    this.desired.copy(carPos).addScaledVector(this.fwd, -c.distance).addScaledVector(UP, c.height);
+    const k = this.options.distance;
+    this.desired.copy(carPos).addScaledVector(this.fwd, -c.distance * k).addScaledVector(UP, c.height * k);
     if (this.snap || cam.position.distanceTo(this.desired) > c.snapDistance) cam.position.copy(this.desired);
     else cam.position.lerp(this.desired, smoothing(c.positionLag, dt));
     // Never sink below the car's roof line.
@@ -55,8 +72,8 @@ export class CameraRig {
     this.lookAt.copy(carPos).addScaledVector(UP, c.lookHeight).addScaledVector(this.fwd, c.lookAhead);
     cam.lookAt(this.lookAt);
 
-    const t = Math.min(Math.abs(speed) / c.fovSpeedRef, 1);
-    const targetFov = c.baseFov + (c.maxFov - c.baseFov) * t * t;
+    const t = this.options.speedFov ? Math.min(Math.abs(speed) / c.fovSpeedRef, 1) : 0;
+    const targetFov = c.baseFov + (c.maxFov - c.baseFov) * t * t + this.options.fovOffset;
     this.setFov(this.snap ? targetFov : cam.fov + (targetFov - cam.fov) * smoothing(c.fovLag, dt));
   }
 
@@ -67,7 +84,7 @@ export class CameraRig {
     this.targetQuat.copy(carQuat).multiply(FACE_FORWARD);
     if (this.snap) cam.quaternion.copy(this.targetQuat);
     else cam.quaternion.slerp(this.targetQuat, smoothing(h.rotationLag, dt));
-    this.setFov(h.fov);
+    this.setFov(h.fov + this.options.fovOffset);
   }
 
   private setFov(fov: number) {

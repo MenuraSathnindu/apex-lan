@@ -118,12 +118,13 @@ body {
   }
 }
 
-/* --- Settings ------------------------------------------------------------ */
+/* --- Pause menu ---------------------------------------------------------- */
 
-.settings-gear {
+.menu-button {
   position: fixed;
   top: 10px;
   left: 12px;
+  z-index: 6;
   width: 36px;
   height: 36px;
   border: 0;
@@ -134,25 +135,112 @@ body {
   cursor: pointer;
 }
 
-.settings-panel {
+.menu {
   position: fixed;
-  top: 54px;
-  left: 12px;
-  width: min(320px, calc(100vw - 24px));
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: rgba(16, 18, 24, 0.92);
+  inset: 0;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 10, 14, 0.6);
+}
+
+.menu[hidden],
+.menu-section[hidden] {
+  display: none;
+}
+
+.menu-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: rgba(18, 20, 27, 0.97);
   color: #e8e8e8;
   font-size: 14px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
-.settings-panel h2 {
-  margin: 0 0 10px;
-  font-size: 16px;
+.menu-head h1 {
+  margin: 0;
+  font-size: 24px;
 }
 
-.settings-option {
+.menu-note {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.menu-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #2a2e38;
+}
+
+.menu-tab {
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: #bbb;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.menu-tab[aria-selected='true'] {
+  border-bottom-color: #d7263d;
+  color: #fff;
+  font-weight: 600;
+}
+
+.menu-section {
+  min-height: 250px;
+}
+
+.menu-row {
+  display: grid;
+  grid-template-columns: 170px 1fr 52px;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.menu-row output {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.menu-row input[type='range'] {
+  width: 100%;
+  accent-color: #d7263d;
+}
+
+.menu-seg {
+  display: flex;
+  gap: 16px;
+}
+
+.menu-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.menu-check input,
+.menu-option input,
+.menu-seg input {
+  accent-color: #d7263d;
+}
+
+.menu-option {
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -160,28 +248,121 @@ body {
   cursor: pointer;
 }
 
-.settings-option span {
+.menu-option span {
   display: flex;
   flex-direction: column;
 }
 
-.settings-option small {
+.menu-option small {
   opacity: 0.65;
 }
 
-.settings-status {
-  margin: 10px 0;
+.menu-status {
+  margin: 8px 0;
   opacity: 0.8;
   font-variant-numeric: tabular-nums;
 }
 
-.settings-close {
-  padding: 6px 14px;
+.menu-keys {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.menu-keys th {
+  padding: 4px 0;
+  font-weight: 400;
+  text-align: left;
+}
+
+.menu-keys td {
+  width: 120px;
+  padding: 3px 0 3px 8px;
+}
+
+.menu-key {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #3a3f4b;
+  border-radius: 7px;
+  background: #0f1116;
+  color: #fff;
+  font: 600 13px system-ui, sans-serif;
+  text-align: center;
+  cursor: pointer;
+}
+
+.menu-key.empty {
+  color: #666;
+}
+
+.menu-key.fixed {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.menu-key.listening {
+  border-color: #d7263d;
+  color: #ffb3bd;
+  animation: rh-blink 0.8s steps(2) infinite;
+}
+
+.menu-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+
+.menu-secondary {
+  margin-top: 12px;
+  padding: 6px 12px;
+  border: 1px solid #3a3f4b;
+  border-radius: 7px;
+  background: none;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.menu-foot {
+  margin-top: 16px;
+}
+
+.menu-resume {
+  width: 100%;
+  padding: 11px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 10px;
   background: #d7263d;
   color: #fff;
+  font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
+}
+
+@media (max-width: 520px) {
+  .menu-row {
+    grid-template-columns: 1fr 2fr 44px;
+  }
+}
+
+.fps-counter {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #9fe870;
+  font: 12px ui-monospace, monospace;
+  pointer-events: none;
+}
+
+.fps-counter[hidden] {
+  display: none;
 }
 
 /* --- Loading ------------------------------------------------------------- */
@@ -473,12 +654,6 @@ body {
   font-size: 13px;
   opacity: 0.75;
   text-align: center;
-}
-
-/* Settings stay reachable on top of the lobby. */
-.settings-gear,
-.settings-panel {
-  z-index: 6;
 }
 
 /* --- Lobby: laps --------------------------------------------------------- */

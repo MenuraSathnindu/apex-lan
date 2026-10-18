@@ -1,4 +1,5 @@
 import type { BuiltTrack } from '@apex/shared';
+import { keyLabel, type Action, type Bindings } from '../input/bindings.ts';
 import { createMinimap, type MinimapCar } from './minimap.ts';
 import { createSpeedometer } from './speedometer.ts';
 
@@ -19,8 +20,8 @@ export function createHud(root: HTMLElement, track: BuiltTrack) {
     <div class="hud-speedo"></div>
     <div class="hud-minimap"></div>
     <div class="hud-help">
-      <div><b>W/S</b> or <b>↑/↓</b> throttle / brake · <b>A/D</b> or <b>←/→</b> steer</div>
-      <div><b>Space</b> handbrake · <b>R</b> reset · <b>C</b> camera <span class="hud-camera"></span> · <b>Esc</b> menu</div>
+      <div class="hud-keys1"></div>
+      <div><span class="hud-keys2"></span> <span class="hud-camera"></span> · <b>Esc</b> menu</div>
       <div class="hud-pad"></div>
     </div>`;
   const speedo = createSpeedometer(root.querySelector<HTMLElement>('.hud-speedo')!);
@@ -28,8 +29,17 @@ export function createHud(root: HTMLElement, track: BuiltTrack) {
   const cameraEl = root.querySelector<HTMLElement>('.hud-camera')!;
   const padEl = root.querySelector<HTMLElement>('.hud-pad')!;
   const last = { camera: '', pad: false };
+  const keys1 = root.querySelector<HTMLElement>('.hud-keys1')!;
+  const keys2 = root.querySelector<HTMLElement>('.hud-keys2')!;
 
   return {
+    /** Shows the current key bindings in the hint line. */
+    setBindings(b: Bindings) {
+      const k = (a: Action) => (b[a].length ? b[a].map((c) => `<b>${keyLabel(c)}</b>`).join('/') : '<b>—</b>');
+      keys1.innerHTML = `${k('throttle')} throttle · ${k('brake')} brake · ${k('left')} ${k('right')} steer`;
+      keys2.innerHTML = `${k('handbrake')} handbrake · ${k('reset')} reset · ${k('camera')} camera`;
+    },
+
     update(f: HudFrame) {
       speedo.update(f.speedMs, f.rpm, f.gear);
       minimap.update(f.dt, f.me, f.others);

@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import {
   APEX_PARK,
   ASSETS,
-  AUDIO,
   CAR,
   FX,
   CAR_COLORS,
@@ -34,6 +33,7 @@ import { LocalCarFx } from './game/localCarFx.ts';
 import { RaceController } from './game/raceController.ts';
 import { RemoteCars } from './game/remoteCars.ts';
 import { Session } from './game/session.ts';
+import { SettingsStore } from './game/userSettings.ts';
 import { createInputController } from './input/inputController.ts';
 import { ServerClock } from './net/clock.ts';
 import { connect } from './net/socket.ts';
@@ -53,7 +53,8 @@ import { createNetStatus } from './ui/netStatus.ts';
 import { createRaceHud } from './ui/raceHud.ts';
 import { createRaceOverlay } from './ui/raceOverlay.ts';
 import { createResults } from './ui/results.ts';
-import { createSettings } from './ui/settings.ts';
+import { createFpsCounter } from './ui/fpsCounter.ts';
+import { createMenu } from './ui/menu.ts';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const loading = createLoadingScreen($('#loading'));
@@ -120,7 +121,6 @@ const [trackView, carFactory, audio] = await Promise.all([
   AudioSystem.create(),
   gfx.environment.load(),
 ]);
-audio.setVolumes({ ...AUDIO.defaults, muted: false });
 const voice = new CarVoice(audio, false);
 const localFx = new LocalCarFx();
 gfx.scene.add(trackView.group);
@@ -142,8 +142,18 @@ applyQuality();
 
 const cameraRig = new CameraRig(gfx.camera);
 const hud = createHud($('#hud'), track);
-createSettings($('#settings'), quality);
 const input = createInputController();
+const fpsCounter = createFpsCounter(document.body);
+const settings = new SettingsStore();
+const menu = createMenu($('#menu'), settings, quality, (open) => input.setEnabled(!open));
+settings.subscribe((s) => {
+  audio.setVolumes(s.audio);
+  input.setBindings(s.bindings);
+  hud.setBindings(s.bindings);
+  cameraRig.options = s.camera;
+  cameraRig.setMode(s.camera.mode);
+  fpsCounter.show(s.showFps);
+});
 
 // --- Room / race flow.
 const lobby = createLobby($('#lobby'), session, {
@@ -286,7 +296,11 @@ startLoop({
     const speed = vehicleSpeed(car);
     carView.setBraking((lastInput.brake > 0 && speed > 0.5) || (lastInput.handbrake && session.race.phase === 'racing'));
 
-    if (input.consumeCameraCycle()) cameraRig.cycle();
+    if (input.consumeMenuToggle()) menu.toggle();
+    if (input.consumeCameraCycle()) {
+      const mode = cameraRig.cycle();
+      settings.update((s) => (s.camera.mode = mode));
+    }
     cameraRig.update(frameDt, renderPos, renderQuat, speed);
     remoteCars.render(gfx.camera, frameDt);
     for (const rc of remoteCars.visible()) effects.remoteFrame(rc, frameDt);
@@ -319,6 +333,7 @@ startLoop({
     raceHud.update();
     results.update();
     quality.frame(frameDt);
+    fpsCounter.frame(frameDt);
     effects.update(frameDt, gfx.camera, gfx.renderer.domElement.height);
     gfx.render(frameDt);
   },

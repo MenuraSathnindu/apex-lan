@@ -5,6 +5,8 @@ export interface Keyboard {
   isDown(code: string): boolean;
   /** True once per physical key press (ignores auto-repeat), then cleared. */
   consumePress(code: string): boolean;
+  /** Forget pending presses (e.g. when a menu opens). */
+  clearPresses(): void;
 }
 
 export function createKeyboard(target: Window = window): Keyboard {
@@ -28,5 +30,6 @@ export function createKeyboard(target: Window = window): Keyboard {
   return {
     isDown: (code) => down.has(code),
     consumePress: (code) => pressed.delete(code),
+    clearPresses: () => pressed.clear(),
   };
 }

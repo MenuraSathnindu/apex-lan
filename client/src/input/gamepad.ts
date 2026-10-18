@@ -8,6 +8,7 @@ const BTN = {
   LT_L2: 6,
   RT_R2: 7,
   VIEW_SHARE: 8,
+  START_OPTIONS: 9,
 } as const;
 
 export interface GamepadSample {
@@ -17,6 +18,7 @@ export interface GamepadSample {
   handbrake: boolean;
   resetPressed: boolean;
   cameraPressed: boolean;
+  menuPressed: boolean;
 }
 
 function deadzone(v: number, dz: number) {
@@ -61,6 +63,7 @@ export function createGamepad() {
         handbrake: !!pad.buttons[BTN.A_CROSS]?.pressed,
         resetPressed: edge(pad, BTN.VIEW_SHARE) || edge(pad, BTN.B_CIRCLE),
         cameraPressed: edge(pad, BTN.Y_TRIANGLE),
+        menuPressed: edge(pad, BTN.START_OPTIONS),
       };
       prev = pad.buttons.map((b) => b.pressed);
       return sample;
