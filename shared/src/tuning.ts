@@ -441,7 +441,7 @@ export const FX = {
   sparkRate: 260,
   sparkLife: 0.45,
   /** HDR colour so bloom picks them up. */
-  sparkColor: { r: 6, g: 3.2, b: 1.0 },
+  sparkColor: { r: 9, g: 4.6, b: 1.4 },
   /** Minimum sideways speed along a wall (m/s) to throw sparks / scrape. */
   scrapeMinSpeed: 2.5,
   /** Impact strength = Δv (m/s) the collision applied in one tick. Below this: no thud. */

@@ -39,6 +39,7 @@ import { connect } from './net/socket.ts';
 import { boxCarFactory } from './render/boxCarModel.ts';
 import { CameraRig } from './render/cameraRig.ts';
 import { CarView } from './render/carView.ts';
+import { Effects } from './render/effects/effects.ts';
 import { loadGltfCarFactory, type CarFactory } from './render/gltfCarModel.ts';
 import { Graphics } from './render/graphics.ts';
 import { QualityManager } from './render/quality.ts';
@@ -124,6 +125,7 @@ const localFx = new LocalCarFx();
 gfx.scene.add(trackView.group);
 const carView = new CarView(carFactory(CAR_COLORS[session.profile.color] ?? CAR_COLORS[0]));
 gfx.scene.add(carView.root);
+const effects = new Effects(gfx.scene);
 const nameTags = new NameTags($('#tags'));
 const remoteCars = new RemoteCars(world, gfx.scene, carFactory, nameTags, clock, audio);
 
@@ -132,6 +134,7 @@ const applyQuality = () => {
   trackView.applyQuality(quality.settings);
   carView.setGlassTransmission(quality.settings.glassTransmission);
   remoteCars.setGlassTransmission(quality.settings.glassTransmission);
+  effects.applyQuality(quality.settings);
 };
 quality.onChange(applyQuality);
 applyQuality();
@@ -184,7 +187,10 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
     localRaceId = msg.race.raceId;
   }
   if (msg.t === 'race') {
-    if (msg.race.phase === 'countdown' && msg.race.raceId !== prevRaceId) pending = { kind: 'grid' };
+    if (msg.race.phase === 'countdown' && msg.race.raceId !== prevRaceId) {
+      pending = { kind: 'grid' };
+      effects.clear();
+    }
     if (msg.race.phase === 'lobby') pending = { kind: 'grid' };
     localRaceId = msg.race.raceId;
   }
@@ -226,7 +232,7 @@ loading.hide();
 
 if (import.meta.env.DEV) {
   // Debug handle for poking at the game from the browser console (and automated tests).
-  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock, raceController, audio, localFx } });
+  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock, raceController, audio, localFx, effects } });
 }
 
 startLoop({
@@ -260,6 +266,7 @@ startLoop({
     world!.step();
     if (racing) raceController.step(FIXED_DT);
     localFx.step(car, lastInput, FIXED_DT);
+    effects.localTick(localFx, car, FIXED_DT);
     capturePose();
 
     if (session.joined && ++tick % SEND_EVERY === 0) {
@@ -279,12 +286,14 @@ startLoop({
     if (input.consumeCameraCycle()) cameraRig.cycle();
     cameraRig.update(frameDt, renderPos, renderQuat, speed);
     remoteCars.render(gfx.camera, frameDt);
+    for (const rc of remoteCars.visible()) effects.remoteFrame(rc, frameDt);
     audio.updateListener(gfx.camera);
     const gearbox = localFx.drivetrain;
     voice.update({ rpm: gearbox.rpm, load: gearbox.load, slip: localFx.screechSlip, scrape: localFx.scrape, speed: Math.abs(speed) });
     for (; localFx.upshifts > 0; localFx.upshifts--) voice.pop();
     for (const hit of localFx.impacts.splice(0)) {
       audio.impact((hit.dv - FX.impactMinDv) / (FX.impactFullDv - FX.impactMinDv) + 0.15);
+      effects.impact(hit, car);
     }
     gfx.environment.follow(renderPos);
     hud.update(speed, cameraRig.mode, input.gamepadConnected);
@@ -293,6 +302,7 @@ startLoop({
     raceHud.update();
     results.update();
     quality.frame(frameDt);
+    effects.update(frameDt, gfx.camera, gfx.renderer.domElement.height);
     gfx.render(frameDt);
   },
 });
