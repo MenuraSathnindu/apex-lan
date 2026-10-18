@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import {
   BloomEffect,
+  type Effect,
   EffectComposer,
   EffectPass,
+  FXAAEffect,
   type Pass,
   RenderPass,
   SMAAEffect,
@@ -17,7 +19,7 @@ import type { QualitySettings } from './quality.ts';
 
 /**
  * Post-processing chain (pmndrs `postprocessing`):
- *   scene → [N8AO ambient occlusion] → [bloom] + ACES tone mapping + vignette → SMAA.
+ *   scene → [N8AO ambient occlusion] → [bloom] + ACES tone mapping + vignette → SMAA (high) / FXAA.
  * The renderer itself uses NoToneMapping; tone mapping happens here, in the effect pass.
  */
 export class PostProcessing {
@@ -53,7 +55,10 @@ export class PostProcessing {
       passes.push(ao);
     }
 
-    const effects = [];
+    const effects: Effect[] = [];
+    // FXAA can share the tone-mapping pass (it filters the scene colour before bloom/tone
+    // mapping): one full-screen pass fewer, which is most of its cost on integrated GPUs.
+    if (q.antialias === 'fxaa') effects.push(new FXAAEffect());
     if (q.bloom) {
       effects.push(
         new BloomEffect({
@@ -68,8 +73,10 @@ export class PostProcessing {
     effects.push(new VignetteEffect({ offset: 0.3, darkness: POST.vignetteDarkness }));
     passes.push(new EffectPass(this.camera, ...effects));
 
-    // SMAA after tone mapping, where edges have their final contrast.
-    passes.push(new EffectPass(this.camera, new SMAAEffect({ preset: level === 'high' ? SMAAPreset.HIGH : SMAAPreset.MEDIUM })));
+    // SMAA after tone mapping, where edges have their final contrast (its own pass).
+    if (q.antialias === 'smaa') {
+      passes.push(new EffectPass(this.camera, new SMAAEffect({ preset: level === 'high' ? SMAAPreset.HIGH : SMAAPreset.MEDIUM })));
+    }
 
     for (const p of passes) this.composer.addPass(p);
     this.passes = passes;

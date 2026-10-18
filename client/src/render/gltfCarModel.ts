@@ -141,12 +141,18 @@ function buildCar(model: THREE.Object3D, spec: CarSpec, paint: THREE.ColorRepres
     cache.set(src, out);
     return out;
   };
+  const detail: THREE.Object3D[] = [];
+  const noShadow = new Set<THREE.Object3D>();
   const all = [body, ...wrappers];
   for (const root of all) {
     root.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map(replace) : replace(mesh.material);
+      if (CAR_MODEL.detailMeshes.test(mesh.name)) {
+        detail.push(mesh);
+        noShadow.add(mesh);
+      } else if (CAR_MODEL.noShadowMeshes.test(mesh.name)) noShadow.add(mesh);
     });
   }
 
@@ -156,6 +162,8 @@ function buildCar(model: THREE.Object3D, spec: CarSpec, paint: THREE.ColorRepres
     brakeLights,
     glass,
     paint: paints,
+    detail,
+    noShadow,
   };
   return { model: result, setPaint: (c: THREE.ColorRepresentation) => paints.forEach((m) => m.color.set(c)) };
 }

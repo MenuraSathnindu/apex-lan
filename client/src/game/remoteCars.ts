@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   CAR,
   CAR_COLORS,
+  CAR_MODEL,
   INTERP_DELAY_MS,
   REMOTE_STALE_MS,
   RAPIER,
@@ -30,6 +31,7 @@ import type { NameTags } from '../ui/nameTags.ts';
 const PROXY_GROUPS = interactionGroups(GROUP.REMOTE_PROXY, GROUP.CAR);
 const TAG_HEIGHT = 1.5;
 const tagPos = new THREE.Vector3();
+const DETAIL_DIST_SQ = CAR_MODEL.detailDistance ** 2;
 const side = new THREE.Vector3();
 const fwd = new THREE.Vector3();
 const DOWN = { x: 0, y: -1, z: 0 };
@@ -200,6 +202,7 @@ export class RemoteCars {
       if (ok) {
         car.applyPose(car.pose);
         car.view.update(car.pos, car.quat, car.wheels);
+        car.view.setDetail(car.pos.distanceToSquared(camera.position) < DETAIL_DIST_SQ);
         car.view.setBraking(car.pose.b === 1);
         car.updateMotion(this.world, dt);
         car.voice?.update(

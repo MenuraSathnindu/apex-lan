@@ -258,6 +258,15 @@ export const CAR_MODEL = {
     paint: ['body_color', 'carpaint', 'paint'],
   },
   paint: { color: 0xc8102e, metalness: 1.0, roughness: 0.45, clearcoat: 1.0, clearcoatRoughness: 0.03 },
+  /**
+   * Small / hidden parts (mesh names, regex). They never cast shadows, and remote cars
+   * further than detailDistance hide them — for the Ferrari that's ~190k of its ~360k
+   * triangles (cockpit, steering wheel, chrome, brake discs…), invisible at that range.
+   */
+  detailMeshes: /interior|leather|steering|chrome|carbon|plastic|trim|^brake(_\d+)?$|leds|wipers|grills|^metal$/i,
+  /** Parts that stay visible but don't cast shadows (see-through or tiny). */
+  noShadowMeshes: /glass|lights|leds/i,
+  detailDistance: 30,
   brakeLightIdle: 0.6,
   brakeLightOn: 4.0,
   headlightIntensity: 2.0,
@@ -286,6 +295,11 @@ export const QUALITY: Record<
     anisotropy: number;
     /** Scales particle budgets (tyre smoke, sparks). */
     particles: number;
+    /**
+     * Anti-aliasing. SMAA looks best but is 3 extra full-screen passes (~2.5 ms on an Intel
+     * UHD iGPU at 1600×900); FXAA is a single cheap pass.
+     */
+    antialias: 'smaa' | 'fxaa';
   }
 > = {
   low: {
@@ -300,19 +314,23 @@ export const QUALITY: Record<
     sceneryDensity: 0.3,
     anisotropy: 2,
     particles: 0.35,
+    antialias: 'fxaa',
   },
   medium: {
-    pixelRatio: 1.25,
+    // Profiled on an Intel UHD iGPU at 1920×1080 with 8 cars: 2048 shadows cost ~3 ms more
+    // than 1024 (±30 m → ~6 cm/texel, softened by radius 2), and pixelRatio > 1 is pure fill cost.
+    pixelRatio: 1,
     shadows: true,
-    shadowMapSize: 2048,
-    shadowRadius: 3,
-    shadowRange: 35,
+    shadowMapSize: 1024,
+    shadowRadius: 2,
+    shadowRange: 30,
     ao: false,
     bloom: true,
     glassTransmission: false,
     sceneryDensity: 0.65,
     anisotropy: 4,
     particles: 0.7,
+    antialias: 'fxaa',
   },
   high: {
     pixelRatio: 2,
@@ -327,6 +345,7 @@ export const QUALITY: Record<
     sceneryDensity: 1,
     anisotropy: 8,
     particles: 1,
+    antialias: 'smaa',
   },
 };
 
@@ -427,11 +446,11 @@ export const FX = {
   skidStep: 0.3,
   /** Slip where tyre smoke starts; puffs per second per wheel at skidFullSlip. */
   smokeMinSlip: 3.5,
-  smokeRate: 28,
+  smokeRate: 22,
   smokeLife: 2.2,
   smokeStartSize: 0.7,
-  smokeEndSize: 4.2,
-  smokeOpacity: 0.32,
+  smokeEndSize: 3.4,
+  smokeOpacity: 0.36,
   /** Linear-space grey (pre tone mapping). */
   smokeBrightness: 0.85,
   /** Max particles at quality 1 (scaled by QUALITY.particles). */

@@ -19,6 +19,10 @@ export interface CarModel {
   glass?: THREE.MeshPhysicalMaterial[];
   /** Body paint materials, recoloured when a player picks a different colour. */
   paint?: THREE.MeshStandardMaterial[];
+  /** Fine detail hidden on distant cars (level of detail). */
+  detail?: THREE.Object3D[];
+  /** Meshes that shouldn't cast shadows (hidden inside the body, see-through, tiny). */
+  noShadow?: Set<THREE.Object3D>;
 }
 
 /** Places a CarModel from the physics pose + per-wheel state every frame. */
@@ -28,6 +32,7 @@ export class CarView {
   private readonly pivots: THREE.Group[] = [];
   /** Child of the pivot, rotated for wheel spin (around X). */
   private readonly spinners: THREE.Group[] = [];
+  private detailVisible = true;
 
   constructor(readonly model: CarModel) {
     this.root.add(model.body);
@@ -42,7 +47,7 @@ export class CarView {
     }
     this.root.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) {
-        o.castShadow = true;
+        o.castShadow = !model.noShadow?.has(o);
         o.receiveShadow = true;
       }
     });
@@ -58,6 +63,13 @@ export class CarView {
       this.pivots[i]!.rotation.y = w.steer;
       this.spinners[i]!.rotation.x = w.spin;
     }
+  }
+
+  /** Level of detail: show/hide the fine parts (far-away cars don't need the cockpit). */
+  setDetail(visible: boolean): void {
+    if (visible === this.detailVisible) return;
+    this.detailVisible = visible;
+    for (const o of this.model.detail ?? []) o.visible = visible;
   }
 
   setPaint(color: THREE.ColorRepresentation): void {
