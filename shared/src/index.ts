@@ -17,3 +17,5 @@ export * from './track/validate.ts';
 export * from './protocol/carState.ts';
 export * from './race/checkpoints.ts';
 export * from './race/raceTracker.ts';
+export * from './physics/drivetrain.ts';
+export * from './physics/vehicleFx.ts';

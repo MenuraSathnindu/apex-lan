@@ -15,3 +15,8 @@ export function surfaceOf(world: World, collider: Collider | null): SurfaceKind 
   if (!collider) return 'asphalt';
   return registry.get(world)?.get(collider.handle) ?? 'asphalt';
 }
+
+/** The tag of a collider, or undefined if it was never tagged (barriers, other cars). */
+export function surfaceTag(world: World, collider: Collider): SurfaceKind | undefined {
+  return registry.get(world)?.get(collider.handle);
+}

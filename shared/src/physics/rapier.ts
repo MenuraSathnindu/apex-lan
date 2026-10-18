@@ -14,4 +14,5 @@ export type {
   RigidBody,
   Collider,
   DynamicRayCastVehicleController,
+  TempContactManifold,
 } from '@dimforge/rapier3d-compat';

@@ -284,6 +284,8 @@ export const QUALITY: Record<
     /** Fraction of trees/props drawn. */
     sceneryDensity: number;
     anisotropy: number;
+    /** Scales particle budgets (tyre smoke, sparks). */
+    particles: number;
   }
 > = {
   low: {
@@ -297,6 +299,7 @@ export const QUALITY: Record<
     glassTransmission: false,
     sceneryDensity: 0.3,
     anisotropy: 2,
+    particles: 0.35,
   },
   medium: {
     pixelRatio: 1.25,
@@ -309,6 +312,7 @@ export const QUALITY: Record<
     glassTransmission: false,
     sceneryDensity: 0.65,
     anisotropy: 4,
+    particles: 0.7,
   },
   high: {
     pixelRatio: 2,
@@ -322,6 +326,7 @@ export const QUALITY: Record<
     glassTransmission: true,
     sceneryDensity: 1,
     anisotropy: 8,
+    particles: 1,
   },
 };
 
@@ -365,4 +370,129 @@ export const RACE = {
   wrongWaySeconds: 1.2,
   /** Respawned cars are placed this far past the checkpoint gate (m). */
   respawnAhead: 3,
+};
+
+// ---------------------------------------------------------------------------
+// Drivetrain (sound + HUD only — it does not change handling, which uses CAR.engine)
+// ---------------------------------------------------------------------------
+
+export const DRIVETRAIN = {
+  idleRpm: 950,
+  redlineRpm: 8500,
+  /** Rev limiter: rpm bounces off this. */
+  limiterRpm: 8700,
+  /** Gear ratios 1st..6th, times finalDrive. Tuned so 6th tops out near CAR's top speed. */
+  ratios: [3.2, 2.2, 1.65, 1.3, 1.07, 0.9],
+  reverseRatio: 3.0,
+  finalDrive: 4.9,
+  /** Upshift at this rpm at full throttle; at light throttle it shifts earlier (see below). */
+  upshiftRpm: 7900,
+  /** Upshift rpm at zero throttle (cruising). */
+  lazyUpshiftRpm: 3800,
+  /** Downshift when rpm falls below this (higher while braking, for blips into corners). */
+  downshiftRpm: 3200,
+  brakingDownshiftRpm: 4300,
+  /** Throttle cut during a shift (s). */
+  shiftTime: 0.14,
+  /** Clutch slip at launch: rpm can't fall below idle + throttle × this while slow. */
+  launchRpm: 3600,
+  /** How fast rpm follows the target (1/s). */
+  rpmResponse: 14,
+  /** Free-revving rate in neutral (rpm/s up, down). */
+  freeRevUp: 14_000,
+  freeRevDown: 7000,
+};
+
+// ---------------------------------------------------------------------------
+// Effects: tyre slip, skid marks, smoke, sparks, impacts (client)
+// ---------------------------------------------------------------------------
+
+export const FX = {
+  /** Fake wheelspin at launch (m/s of slip at full throttle from standstill), fades out by launchSlipSpeed. */
+  launchSlip: 6,
+  launchSlipSpeed: 7,
+  /** Locked rear wheels on the handbrake slide at this fraction of forward speed. */
+  handbrakeSlipFactor: 0.6,
+  /** Tyre slip (m/s) where skid marks start, and where they're fully dark. */
+  skidMinSlip: 2.2,
+  skidFullSlip: 7,
+  /** Skid mark width (m) and darkest shade (multiplies the road colour, 0 = black). */
+  skidWidth: 0.24,
+  skidDarkness: 0.35,
+  /** Ring buffer size; old marks get overwritten. */
+  skidSegments: 4000,
+  /** New segment every this many metres of travel. */
+  skidStep: 0.3,
+  /** Slip where tyre smoke starts; puffs per second per wheel at skidFullSlip. */
+  smokeMinSlip: 3.5,
+  smokeRate: 28,
+  smokeLife: 2.2,
+  smokeStartSize: 0.7,
+  smokeEndSize: 4.2,
+  smokeOpacity: 0.32,
+  /** Linear-space grey (pre tone mapping). */
+  smokeBrightness: 0.85,
+  /** Max particles at quality 1 (scaled by QUALITY.particles). */
+  smokeMax: 700,
+  sparksMax: 500,
+  /** Sparks per second while scraping a wall at 20 m/s (scales with speed). */
+  sparkRate: 260,
+  sparkLife: 0.45,
+  /** HDR colour so bloom picks them up. */
+  sparkColor: { r: 6, g: 3.2, b: 1.0 },
+  /** Minimum sideways speed along a wall (m/s) to throw sparks / scrape. */
+  scrapeMinSpeed: 2.5,
+  /** Impact strength = Δv (m/s) the collision applied in one tick. Below this: no thud. */
+  impactMinDv: 0.8,
+  /** Δv for a full-volume thud. */
+  impactFullDv: 8,
+  /** Burst of sparks per m/s of Δv on a wall hit. */
+  impactSparks: 14,
+};
+
+// ---------------------------------------------------------------------------
+// Audio (client). Every sound file is optional — procedural placeholders are used otherwise.
+// ---------------------------------------------------------------------------
+
+export const AUDIO = {
+  /** Optional recordings in client/public/sounds/. */
+  files: {
+    /** Engine loop recorded at engineFileRpm (on load). */
+    engine: 'sounds/engine.ogg',
+    engineFileRpm: 3000,
+    skid: 'sounds/skid.ogg',
+    impact: 'sounds/impact.ogg',
+    scrape: 'sounds/scrape.ogg',
+  },
+  /** Default volumes 0..1 (players change them in the menu). */
+  defaults: { master: 0.8, engine: 0.8, effects: 0.8, ui: 0.6 },
+  engine: {
+    /** Gain at idle with no throttle → at redline with full throttle. */
+    minGain: 0.28,
+    maxGain: 0.9,
+    /** Low-pass cutoff (Hz): closed throttle → open throttle, plus per-rpm brightening. */
+    cutoffClosed: 900,
+    cutoffOpen: 3800,
+    cutoffPerRpm: 0.35,
+  },
+  skid: { maxGain: 0.55, minRate: 0.85, maxRate: 1.2 },
+  scrape: { maxGain: 0.6 },
+  wind: { gainAt60ms: 0.25 },
+  impact: { maxGain: 1.0 },
+  /** Remote cars: positional (PannerNode) and a bit quieter. */
+  remote: { gain: 0.7, refDistance: 7, rolloff: 1.4, maxDistance: 400 },
+  /** Seconds for volume/pitch changes to settle (avoids zipper noise). */
+  smoothing: 0.04,
+};
+
+// ---------------------------------------------------------------------------
+// HUD
+// ---------------------------------------------------------------------------
+
+export const HUD = {
+  /** Tachometer scale (rpm) and where the red zone starts. */
+  tachoMaxRpm: 9000,
+  /** Minimap size (CSS px) and redraw rate (Hz). */
+  minimapSize: 190,
+  minimapHz: 30,
 };
