@@ -29,6 +29,7 @@ import {
 import { AudioSystem } from './audio/audioSystem.ts';
 import { CarVoice } from './audio/carVoice.ts';
 import { startLoop } from './core/loop.ts';
+import { FrameProfiler } from './core/profiler.ts';
 import { LocalCarFx } from './game/localCarFx.ts';
 import { RaceController } from './game/raceController.ts';
 import { RemoteCars } from './game/remoteCars.ts';
@@ -143,7 +144,8 @@ applyQuality();
 const cameraRig = new CameraRig(gfx.camera);
 const hud = createHud($('#hud'), track);
 const input = createInputController();
-const fpsCounter = createFpsCounter(document.body);
+const profiler = new FrameProfiler(gfx.renderer.getContext() as WebGL2RenderingContext);
+const fpsCounter = createFpsCounter(document.body, profiler);
 const settings = new SettingsStore();
 const menu = createMenu($('#menu'), settings, quality, (open) => input.setEnabled(!open));
 settings.subscribe((s) => {
@@ -245,11 +247,12 @@ loading.hide();
 
 if (import.meta.env.DEV) {
   // Debug handle for poking at the game from the browser console (and automated tests).
-  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock, raceController, audio, localFx, effects } });
+  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock, raceController, audio, localFx, effects, profiler } });
 }
 
 startLoop({
   step() {
+    profiler.beginStep();
     if (pending) {
       if (pending.kind === 'grid') placeOnGrid();
       else {
@@ -286,6 +289,7 @@ startLoop({
       const braking = (lastInput.brake > 0 && vehicleSpeed(car) > 0.5) || lastInput.handbrake;
       socket.send({ t: 'state', s: packCarState(car, braking) });
     }
+    profiler.endStep();
   },
   render(alpha, frameDt) {
     renderPos.lerpVectors(prevPos, currPos, alpha);
@@ -335,6 +339,8 @@ startLoop({
     quality.frame(frameDt);
     fpsCounter.frame(frameDt);
     effects.update(frameDt, gfx.camera, gfx.renderer.domElement.height);
+    profiler.beginRender();
     gfx.render(frameDt);
+    profiler.endRender(frameDt);
   },
 });
