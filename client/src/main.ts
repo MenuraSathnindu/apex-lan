@@ -15,6 +15,7 @@ import {
   buildTrack,
   createVehicle,
   createWorld,
+  gearLabel,
   initRapier,
   packCarState,
   readWheelStates,
@@ -140,7 +141,7 @@ quality.onChange(applyQuality);
 applyQuality();
 
 const cameraRig = new CameraRig(gfx.camera);
-const hud = createHud($('#hud'));
+const hud = createHud($('#hud'), track);
 createSettings($('#settings'), quality);
 const input = createInputController();
 
@@ -211,6 +212,8 @@ const currQuat = new THREE.Quaternion();
 const renderPos = new THREE.Vector3();
 const renderQuat = new THREE.Quaternion();
 const wheels: WheelState[] = [];
+const fwdTmp = new THREE.Vector3();
+const hudMe = { x: 0, z: 0, yaw: 0, color: 0 };
 const HOLD: CarInput = { ...NEUTRAL_INPUT, handbrake: true };
 let lastInput: CarInput = HOLD;
 let tick = 0;
@@ -296,7 +299,21 @@ startLoop({
       effects.impact(hit, car);
     }
     gfx.environment.follow(renderPos);
-    hud.update(speed, cameraRig.mode, input.gamepadConnected);
+    fwdTmp.set(0, 0, 1).applyQuaternion(renderQuat);
+    hudMe.x = renderPos.x;
+    hudMe.z = renderPos.z;
+    hudMe.yaw = Math.atan2(fwdTmp.x, fwdTmp.z);
+    hudMe.color = session.me?.color ?? session.profile.color;
+    hud.update({
+      dt: frameDt,
+      speedMs: speed,
+      rpm: gearbox.rpm,
+      gear: gearLabel(gearbox.gear),
+      camera: cameraRig.mode,
+      gamepad: input.gamepadConnected,
+      me: hudMe,
+      others: remoteCars.visible(),
+    });
     lobby.show(session.race.phase === 'lobby' || session.full);
     raceOverlay.update();
     raceHud.update();
