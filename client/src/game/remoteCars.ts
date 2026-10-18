@@ -7,13 +7,19 @@ import {
   RAPIER,
   interactionGroups,
   GROUP,
+  createDrivetrain,
+  stepDrivetrain,
+  surfaceOf,
   wheelConnection,
+  WHEEL_RAY_GROUPS,
   type CarSnapshot,
   type PlayerInfo,
   type RigidBody,
   type WheelState,
   type World,
 } from '@apex/shared';
+import type { AudioSystem } from '../audio/audioSystem.ts';
+import { CarVoice } from '../audio/carVoice.ts';
 import { emptyPose, SnapshotBuffer, type Pose } from '../net/interpolation.ts';
 import type { ServerClock } from '../net/clock.ts';
 import type { CarFactory } from '../render/gltfCarModel.ts';
@@ -24,6 +30,9 @@ import type { NameTags } from '../ui/nameTags.ts';
 const PROXY_GROUPS = interactionGroups(GROUP.REMOTE_PROXY, GROUP.CAR);
 const TAG_HEIGHT = 1.5;
 const tagPos = new THREE.Vector3();
+const side = new THREE.Vector3();
+const fwd = new THREE.Vector3();
+const DOWN = { x: 0, y: -1, z: 0 };
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
@@ -40,12 +49,39 @@ class RemoteCar {
   readonly quat = new THREE.Quaternion();
   color = -1;
   active = false;
+  /** Sound + effects state, estimated from the interpolated motion. */
+  readonly drivetrain = createDrivetrain();
+  voice: CarVoice | null = null;
+  speed = 0;
+  /** Sideways sliding speed of the body (m/s) — stands in for tyre slip. */
+  slip = 0;
+  onGrass = false;
+  private surfaceTimer = 0;
 
   constructor(
     readonly id: number,
     readonly view: CarView,
     readonly body: RigidBody,
   ) {}
+
+  /** Derives speed, a throttle guess, gear/rpm and slip from the interpolated pose. */
+  updateMotion(world: World, dt: number) {
+    const v = this.pose.v;
+    fwd.set(0, 0, 1).applyQuaternion(this.quat);
+    side.set(1, 0, 0).applyQuaternion(this.quat);
+    const speed = v[0] * fwd.x + v[1] * fwd.y + v[2] * fwd.z;
+    const accel = dt > 0 ? (speed - this.speed) / dt : 0;
+    this.speed = speed;
+    const throttle = accel > 0.8 ? 1 : accel > -0.5 && Math.abs(speed) > 1 ? 0.3 : 0;
+    stepDrivetrain(this.drivetrain, speed, throttle, accel < -4, dt);
+    this.slip = Math.abs(v[0] * side.x + v[1] * side.y + v[2] * side.z);
+    // What's under the car (a few times a second is plenty).
+    if ((this.surfaceTimer -= dt) <= 0) {
+      this.surfaceTimer = 0.2;
+      const hit = world.castRay(new RAPIER.Ray({ x: this.pos.x, y: this.pos.y + 0.5, z: this.pos.z }, DOWN), 3, true, undefined, WHEEL_RAY_GROUPS);
+      this.onGrass = !!hit && surfaceOf(world, hit.collider) === 'grass';
+    }
+  }
 
   /** Samples the buffer at server time t. False if we have nothing recent. */
   sample(t: number, serverNow: number): boolean {
@@ -79,6 +115,7 @@ export class RemoteCars {
     private readonly factory: CarFactory,
     private readonly tags: NameTags,
     private readonly clock: ServerClock,
+    private readonly audio: AudioSystem | null = null,
   ) {}
 
   get count(): number {
@@ -105,6 +142,7 @@ export class RemoteCars {
         );
         body.setEnabled(false);
         car = new RemoteCar(p.id, view, body);
+        if (this.audio) car.voice = new CarVoice(this.audio, true);
         this.cars.set(p.id, car);
       }
       if (car.color !== p.color) {
@@ -116,6 +154,7 @@ export class RemoteCars {
     for (const [id, car] of this.cars) {
       if (keep.has(id)) continue;
       car.view.dispose();
+      car.voice?.dispose();
       this.world.removeRigidBody(car.body);
       this.tags.remove(id);
       this.cars.delete(id);
@@ -150,7 +189,7 @@ export class RemoteCars {
   }
 
   /** Every frame: place models and name tags at the interpolated pose. */
-  render(camera: THREE.PerspectiveCamera): void {
+  render(camera: THREE.PerspectiveCamera, dt: number): void {
     const now = this.clock.now();
     // The camera rig just moved the camera; three only refreshes its matrices inside
     // render(), so do it now or tags are projected with last frame's view (visible lag at speed).
@@ -162,10 +201,20 @@ export class RemoteCars {
         car.applyPose(car.pose);
         car.view.update(car.pos, car.quat, car.wheels);
         car.view.setBraking(car.pose.b === 1);
-      }
+        car.updateMotion(this.world, dt);
+        car.voice?.update(
+          { rpm: car.drivetrain.rpm, load: car.drivetrain.load, slip: car.onGrass ? 0 : car.slip, scrape: 0, speed: Math.abs(car.speed) },
+          car.pos,
+        );
+      } else car.voice?.silence();
       tagPos.copy(car.pos).y += TAG_HEIGHT;
       this.tags.place(car.id, tagPos, camera, ok);
     }
+  }
+
+  /** Visible remote cars (for the minimap and effects). */
+  *visible(): IterableIterator<RemoteCar> {
+    for (const car of this.cars.values()) if (car.view.root.visible) yield car;
   }
 
   setGlassTransmission(enabled: boolean): void {

@@ -82,8 +82,9 @@ export function stepDrivetrain(
     s.rpm += Math.sign(target - s.rpm) * Math.min(Math.abs(target - s.rpm), rate * dt);
   } else {
     target = wheelRpm(speed, s.gear, spec);
-    // Clutch slip while launching: revs rise ahead of the wheels.
-    target = Math.max(target, spec.idleRpm + spec.launchRpm * cut * (s.gear === 1 || s.gear === -1 ? 1 : 0), spec.idleRpm);
+    // Clutch slip while launching: revs rise ahead of the wheels, fading out as the clutch bites.
+    const clutch = s.gear === 1 || s.gear === -1 ? Math.max(0, 1 - abs / spec.clutchSpeed) : 0;
+    target = Math.max(target, spec.idleRpm + spec.launchRpm * cut * clutch, spec.idleRpm);
     s.rpm += (target - s.rpm) * (1 - Math.exp(-spec.rpmResponse * dt));
   }
 

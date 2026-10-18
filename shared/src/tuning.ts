@@ -396,6 +396,8 @@ export const DRIVETRAIN = {
   shiftTime: 0.14,
   /** Clutch slip at launch: rpm can't fall below idle + throttle × this while slow. */
   launchRpm: 3600,
+  /** …fading out by this speed (m/s). */
+  clutchSpeed: 7,
   /** How fast rpm follows the target (1/s). */
   rpmResponse: 14,
   /** Free-revving rate in neutral (rpm/s up, down). */

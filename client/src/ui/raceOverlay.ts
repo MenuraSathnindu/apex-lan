@@ -2,7 +2,14 @@ import type { Session } from '../game/session.ts';
 import type { ServerClock } from '../net/clock.ts';
 
 /** Countdown numbers, "GO!", and the host's "End race" button. */
-export function createRaceOverlay(root: HTMLElement, session: Session, clock: ServerClock, onEndRace: () => void) {
+export function createRaceOverlay(
+  root: HTMLElement,
+  session: Session,
+  clock: ServerClock,
+  onEndRace: () => void,
+  /** Called when a new countdown number / "GO!" appears (for the beep). */
+  onCount: (text: string) => void = () => {},
+) {
   root.innerHTML = `<div class="race-count"></div>
     <button type="button" class="race-end" hidden>End race</button>`;
   const countEl = root.querySelector<HTMLElement>('.race-count')!;
@@ -25,7 +32,10 @@ export function createRaceOverlay(root: HTMLElement, session: Session, clock: Se
         // Restart the pop animation on each new number.
         countEl.classList.remove('pop');
         void countEl.offsetWidth;
-        if (text) countEl.classList.add('pop');
+        if (text) {
+          countEl.classList.add('pop');
+          onCount(text);
+        }
         lastText = text;
       }
       endBtn.hidden = !(session.isHost && (phase === 'countdown' || phase === 'racing'));

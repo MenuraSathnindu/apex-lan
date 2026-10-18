@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import {
   APEX_PARK,
   ASSETS,
+  AUDIO,
   CAR,
+  FX,
   CAR_COLORS,
   FIXED_DT,
   NEUTRAL_INPUT,
@@ -24,7 +26,10 @@ import {
   type S2C,
   type WheelState,
 } from '@apex/shared';
+import { AudioSystem } from './audio/audioSystem.ts';
+import { CarVoice } from './audio/carVoice.ts';
 import { startLoop } from './core/loop.ts';
+import { LocalCarFx } from './game/localCarFx.ts';
 import { RaceController } from './game/raceController.ts';
 import { RemoteCars } from './game/remoteCars.ts';
 import { Session } from './game/session.ts';
@@ -104,19 +109,23 @@ const car = createVehicle(world, track.spawnGrid[0]!);
 // --- Graphics + assets (each asset falls back to a procedural version if missing).
 const gfx = new Graphics($('#game'));
 const quality = new QualityManager();
-const [trackView, carFactory] = await Promise.all([
+const [trackView, carFactory, audio] = await Promise.all([
   TrackView.create(track),
   loadGltfCarFactory(ASSETS.car, CAR).catch((err: unknown): CarFactory => {
     console.warn(`[assets] Car model not loaded from /${ASSETS.car} — using the placeholder box car. See docs/ASSETS.md.`, err);
     return boxCarFactory(CAR);
   }),
+  AudioSystem.create(),
   gfx.environment.load(),
 ]);
+audio.setVolumes({ ...AUDIO.defaults, muted: false });
+const voice = new CarVoice(audio, false);
+const localFx = new LocalCarFx();
 gfx.scene.add(trackView.group);
 const carView = new CarView(carFactory(CAR_COLORS[session.profile.color] ?? CAR_COLORS[0]));
 gfx.scene.add(carView.root);
 const nameTags = new NameTags($('#tags'));
-const remoteCars = new RemoteCars(world, gfx.scene, carFactory, nameTags, clock);
+const remoteCars = new RemoteCars(world, gfx.scene, carFactory, nameTags, clock, audio);
 
 const applyQuality = () => {
   gfx.applyQuality(quality.level, quality.settings);
@@ -144,7 +153,13 @@ const lobby = createLobby($('#lobby'), session, {
     socket.send({ t: 'setLaps', laps });
   },
 });
-const raceOverlay = createRaceOverlay($('#race'), session, clock, () => socket.send({ t: 'endRace' }));
+const raceOverlay = createRaceOverlay(
+  $('#race'),
+  session,
+  clock,
+  () => socket.send({ t: 'endRace' }),
+  (text) => (text === 'GO!' ? audio.beep(1046, 0.55) : audio.beep(523, 0.2)),
+);
 const gridPose = () => track.spawnGrid[session.me?.slot ?? 0] ?? track.spawnGrid[0]!;
 const raceController = new RaceController(track, buildCheckpoints(track), car, session, gridPose);
 const raceHud = createRaceHud($('#racehud'), session, clock, raceController);
@@ -211,7 +226,7 @@ loading.hide();
 
 if (import.meta.env.DEV) {
   // Debug handle for poking at the game from the browser console (and automated tests).
-  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock, raceController } });
+  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock, raceController, audio, localFx } });
 }
 
 startLoop({
@@ -244,6 +259,7 @@ startLoop({
     remoteCars.stepPhysics();
     world!.step();
     if (racing) raceController.step(FIXED_DT);
+    localFx.step(car, lastInput, FIXED_DT);
     capturePose();
 
     if (session.joined && ++tick % SEND_EVERY === 0) {
@@ -262,7 +278,14 @@ startLoop({
 
     if (input.consumeCameraCycle()) cameraRig.cycle();
     cameraRig.update(frameDt, renderPos, renderQuat, speed);
-    remoteCars.render(gfx.camera);
+    remoteCars.render(gfx.camera, frameDt);
+    audio.updateListener(gfx.camera);
+    const gearbox = localFx.drivetrain;
+    voice.update({ rpm: gearbox.rpm, load: gearbox.load, slip: localFx.screechSlip, scrape: localFx.scrape, speed: Math.abs(speed) });
+    for (; localFx.upshifts > 0; localFx.upshifts--) voice.pop();
+    for (const hit of localFx.impacts.splice(0)) {
+      audio.impact((hit.dv - FX.impactMinDv) / (FX.impactFullDv - FX.impactMinDv) + 0.15);
+    }
     gfx.environment.follow(renderPos);
     hud.update(speed, cameraRig.mode, input.gamepadConnected);
     lobby.show(session.race.phase === 'lobby' || session.full);
