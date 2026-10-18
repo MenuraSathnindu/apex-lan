@@ -27,7 +27,8 @@ phase. If a decision changes, update that doc in the same change.
 | `npm install` | install all workspaces |
 | `npm run dev` | server (`tsx watch`, :3000) + Vite (:5173 on 0.0.0.0, proxies `/ws` → :3000). In dev, friends join the **:5173** URL |
 | `npm run build` | build client to `client/dist`, bundle server with esbuild to `server/dist` |
-| `npm start` | production: server on :3000 serves `client/dist` + `/ws` — **this is what friends join** |
+| `npm run host` | **how to host a game:** `build` then `start`. Prints the LAN URLs + a terminal QR code. Hosting/firewall guide: [`HOSTING.md`](HOSTING.md) |
+| `npm start` | production: server on :3000 serves `client/dist` + `/ws` — **this is what friends join** (no rebuild) |
 | `npm run typecheck` | `tsc --noEmit` across all workspaces |
 | `npm test` | Vitest (shared + server) |
 | `npm run handling` | headless driving scenarios → 0–100, braking, cornering g, drift angle, rollover checks for the current tuning |
@@ -84,7 +85,8 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unless asked; do leave seams for it.
 
 ## Gotchas
-- **Windows firewall** must allow Node on *Private* networks or friends can't connect. The server prints LAN URLs on boot.
+- **Windows firewall** must allow TCP 3000 (or Node) on the active network profile or friends can't connect; see `HOSTING.md` (netsh rule, Public vs Private, block rules beat allow rules). The server prints LAN URLs (Wi-Fi first) and a QR code (`server/src/util/qr.ts`, `uqr`) on boot; `APEX_QR=0` hides it.
+- Static files (`server/src/net/staticFiles.ts`): unknown paths without an extension → `index.html`; missing files *with* an extension → 404 (optional assets fail fast); only Vite's hashed `/assets/` are cached immutable, everything else `no-cache` so replaced models/sounds show up.
 - Vite dev server needs `host: '0.0.0.0'` to be reachable from other devices.
 - `client/vite.config.ts` imports `@apex/shared` (raw TS), so Vite runs with `--configLoader runner`. Keep that flag on dev/build/preview.
 - The server esbuild bundle must **include** `@apex/shared` (only `ws` is external) — Node can't run the shared `.ts` source at runtime.

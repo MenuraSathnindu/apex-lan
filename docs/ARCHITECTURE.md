@@ -223,10 +223,14 @@ CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking) } �
 - Manual: two browser **windows** side by side (a background tab stops rendering).
 
 ### 3.8 LAN hosting specifics
-- HTTP + WS on `0.0.0.0:3000`. On boot the server prints every non-internal IPv4:
-  `Join at: http://192.168.1.23:3000`.
-- **Windows firewall:** first run prompts to allow Node — tick *Private networks*. Document this
-  in the README; it is the #1 "friends can't connect" cause.
+- One command: `npm run host` = `npm run build && npm start`. HTTP + WS share `0.0.0.0:3000`.
+  On boot the server prints every non-internal IPv4 (Wi-Fi first, VPN/VM adapters labelled
+  "Other"), e.g. `Join at: http://192.168.1.23:3000`, plus a QR code of the first real address
+  rendered with half blocks in explicit black-on-white ANSI so it scans on dark and light terminals.
+- **Windows firewall** is the #1 "friends can't connect" cause (inbound blocked, Wi-Fi marked
+  *Public*, or a Block rule left by cancelling Node's prompt). [`HOSTING.md`](../HOSTING.md) has the
+  netsh rule, the network-profile fix, finding the IP, and a step-by-step troubleshooting list
+  (incl. AP isolation → phone hotspot).
 - `rapier3d-compat` ships WASM inlined as base64 → no special MIME / COOP/COEP headers needed,
   plain HTTP over LAN works (no secure-context requirement for WebGL/WebSocket/WebAudio).
 - Browsers only expose the Gamepad API to secure contexts (https / localhost). The host on
