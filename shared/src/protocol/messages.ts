@@ -5,6 +5,7 @@ import type { Livery } from '../livery.ts';
 import type { ProfileSummary } from './api.ts';
 import type { Compound, TyreWearSetting } from '../physics/tyres.ts';
 import type { DetectionEvent, LapEvent, Standing } from '../race/raceTracker.ts';
+import type { SessionInfo } from '../race/sessions.ts';
 
 export type RacePhase = 'lobby' | 'countdown' | 'racing' | 'results';
 
@@ -42,6 +43,8 @@ export interface RaceState {
   tyreWear: TyreWearSetting;
   /** Track for the next/current race (host picks it in the lobby). */
   trackId: string;
+  /** What kind of session this is (quick race, or a championship qualifying / sprint / race). */
+  session: SessionInfo;
 }
 
 /** A car's state as reported by its owner. Numbers are rounded to keep messages small. */

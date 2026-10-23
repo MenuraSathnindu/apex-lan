@@ -571,6 +571,26 @@ export const RACE = {
   points: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1],
 };
 
+/** Championship weekends (sessions and points). */
+export const CHAMPIONSHIP = {
+  racePoints: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1],
+  sprintPoints: [8, 7, 6, 5, 4, 3, 2, 1],
+  /** Bonus for the race's fastest lap (if the season has it on), only for a top-N finisher. */
+  fastestLapBonus: 1,
+  fastestLapTopN: 10,
+  /** Timed qualifying lengths (minutes) and the default. */
+  qualiMinutes: [5, 8, 12] as const,
+  qualiDefaultMinutes: 8 as const,
+  /** A lap under way when timed qualifying ends may finish within this (ms). */
+  qualiOverrunMs: 120_000,
+  /** One-shot qualifying ends after this at the latest (ms). */
+  oneShotMaxMs: 300_000,
+  maxRounds: 30,
+  nameMax: 40,
+  teamNameMax: 24,
+  teamSize: 2,
+};
+
 // ---------------------------------------------------------------------------
 // Drivetrain (sound + HUD only — it does not change handling, which uses CAR.engine)
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import {
   MAX_PLAYERS,
   REJOIN_GRACE_MS,
   defaultTag,
+  freeSession,
   isCompound,
   isTyreWearSetting,
   isValidCarState,
@@ -92,7 +93,7 @@ export class Room {
   private readonly byConn = new Map<Connection, Player>();
   private nextId = 1;
   private hostId = 0;
-  private race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0, tyreWear: 'normal', trackId: APEX_PARK.id };
+  private race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0, tyreWear: 'normal', trackId: APEX_PARK.id, session: freeSession(RACE.defaultLaps) };
   private readonly now: () => number;
   private readonly log: (msg: string) => void;
   private readonly tracks: TrackProvider;

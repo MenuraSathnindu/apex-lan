@@ -1,4 +1,4 @@
-import { APEX_PARK, CAR_COLORS, NAME_MAX_LENGTH, RACE, isCompound, presetLivery, sanitizeLivery, type Compound, type Livery, type ProfileSummary, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
+import { APEX_PARK, CAR_COLORS, freeSession, NAME_MAX_LENGTH, RACE, isCompound, presetLivery, sanitizeLivery, type Compound, type Livery, type ProfileSummary, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
 
 const PROFILE_KEY = 'apex.profile';
 const SESSION_KEY = 'apex.session';
@@ -38,7 +38,7 @@ export class Session {
   myId = 0;
   hostId = 0;
   players: PlayerInfo[] = [];
-  race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0, tyreWear: 'normal', trackId: APEX_PARK.id };
+  race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0, tyreWear: 'normal', trackId: APEX_PARK.id, session: freeSession(RACE.defaultLaps) };
   connected = false;
   full = false;
   /** Latest ranking from the server (empty in the lobby). */
