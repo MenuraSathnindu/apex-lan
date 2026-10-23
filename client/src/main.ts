@@ -4,7 +4,6 @@ import {
   ASSETS,
   CAR,
   FX,
-  CAR_COLORS,
   FIXED_DT,
   NEUTRAL_INPUT,
   STATE_SEND_RATE,
@@ -18,6 +17,7 @@ import {
   initRapier,
   newErsLap,
   packCarState,
+  presetLivery,
   readWheelStates,
   refillErs,
   resetVehicle,
@@ -40,11 +40,11 @@ import { SettingsStore } from './game/userSettings.ts';
 import { createInputController } from './input/inputController.ts';
 import { ServerClock } from './net/clock.ts';
 import { connect } from './net/socket.ts';
-import { boxCarFactory } from './render/boxCarModel.ts';
 import { CameraRig } from './render/cameraRig.ts';
 import { CarView } from './render/carView.ts';
 import { Effects } from './render/effects/effects.ts';
 import { loadGltfCarFactory, type CarFactory } from './render/gltfCarModel.ts';
+import { openWheelCarFactory } from './render/openWheelCarModel.ts';
 import { Graphics } from './render/graphics.ts';
 import { QualityManager } from './render/quality.ts';
 import { TrackView } from './render/trackView.ts';
@@ -107,6 +107,10 @@ const socket = connect({
 
 // --- Physics.
 await initRapier();
+/** Our paint scheme: the server's copy once we have joined, else what we last chose. */
+function myLivery() {
+  return presetLivery(session.me?.color ?? session.profile.color);
+}
 const track = buildTrack(APEX_PARK);
 world = createWorld();
 addTrackColliders(world, track);
@@ -117,9 +121,9 @@ const gfx = new Graphics($('#game'));
 const quality = new QualityManager();
 const [trackView, carFactory, audio] = await Promise.all([
   TrackView.create(track),
-  loadGltfCarFactory(ASSETS.car, CAR).catch((err: unknown): CarFactory => {
-    console.warn(`[assets] Car model not loaded from /${ASSETS.car} — using the placeholder box car. See docs/ASSETS.md.`, err);
-    return boxCarFactory(CAR);
+  loadGltfCarFactory(ASSETS.car, CAR, myLivery()).catch((err: unknown): CarFactory => {
+    console.warn(`[assets] Car model not loaded from /${ASSETS.car} — using the built-in open-wheel car. See docs/OPENWHEEL_MODEL.md.`, err);
+    return openWheelCarFactory(CAR);
   }),
   AudioSystem.create(),
   gfx.environment.load(),
@@ -127,7 +131,7 @@ const [trackView, carFactory, audio] = await Promise.all([
 const voice = new CarVoice(audio, false);
 const localFx = new LocalCarFx();
 gfx.scene.add(trackView.group);
-const carView = new CarView(carFactory(CAR_COLORS[session.profile.color] ?? CAR_COLORS[0]));
+const carView = new CarView(carFactory(myLivery()));
 gfx.scene.add(carView.root);
 const effects = new Effects(gfx.scene);
 const nameTags = new NameTags($('#tags'));
@@ -212,7 +216,7 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
     if (msg.race.phase === 'lobby') pending = { kind: 'grid' };
     localRaceId = msg.race.raceId;
   }
-  if (session.me) carView.setPaint(CAR_COLORS[session.me.color] ?? CAR_COLORS[0]);
+  if (session.me) carView.setLivery(myLivery());
   remoteCars.syncRoster(session.players, session.myId);
   lobby.update();
 };
@@ -309,6 +313,7 @@ startLoop({
     renderQuat.slerpQuaternions(prevQuat, currQuat, alpha);
     readWheelStates(car, wheels);
     carView.update(renderPos, renderQuat, wheels);
+    carView.setWingOpen(car.aero.blend);
 
     const speed = vehicleSpeed(car);
     carView.setBraking((lastInput.brake > 0 && speed > 0.5) || (lastInput.handbrake && session.race.phase === 'racing'));

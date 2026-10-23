@@ -17,10 +17,12 @@ export interface Pose {
   v: [number, number, number];
   wh: number[];
   b: 0 | 1;
+  /** Wing opening 0..1. */
+  a: number;
 }
 
 export function emptyPose(): Pose {
-  return { p: [0, 0, 0], q: [0, 0, 0, 1], v: [0, 0, 0], wh: new Array(12).fill(0), b: 0 };
+  return { p: [0, 0, 0], q: [0, 0, 0, 1], v: [0, 0, 0], wh: new Array(12).fill(0), b: 0, a: 0 };
 }
 
 function slerp(a: readonly number[], b: readonly number[], t: number, out: number[]) {
@@ -104,6 +106,7 @@ export class SnapshotBuffer {
     // Steer, cumulative spin and wheel height all interpolate linearly.
     for (let j = 0; j < out.wh.length; j++) out.wh[j] = a.s.wh[j]! + (b.s.wh[j]! - a.s.wh[j]!) * k;
     out.b = k < 0.5 ? a.s.b : b.s.b;
+    out.a = (a.s.a ?? 0) + ((b.s.a ?? 0) - (a.s.a ?? 0)) * k;
     return true;
   }
 }
@@ -116,4 +119,5 @@ function copy(s: CarState, out: Pose) {
   for (let i = 0; i < 4; i++) out.q[i] = s.q[i]!;
   for (let i = 0; i < out.wh.length; i++) out.wh[i] = s.wh[i] ?? 0;
   out.b = s.b;
+  out.a = s.a ?? 0;
 }

@@ -251,7 +251,7 @@ export const INPUT = {
  */
 export const ASSETS = {
   hdri: 'hdri/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
-  car: 'models/car.glb',
+  car: 'models/openwheel.glb',
   asphalt: {
     map: 'textures/asphalt_02_diff_2k.jpg',
     normalMap: 'textures/asphalt_02_nor_gl_2k.jpg',
@@ -288,34 +288,44 @@ export const ENVIRONMENT = {
 };
 
 /**
- * How to fit an arbitrary car GLB to the physics car. Defaults match the Ferrari 458
- * from the three.js examples (see docs/ASSETS.md).
+ * How to fit the open-wheel car GLB (client/public/models/openwheel.glb) to the physics car.
+ * The file contract is documented in docs/OPENWHEEL_MODEL.md.
  */
 export const CAR_MODEL = {
-  /** Node names for FL, FR, RL, RR wheels (each includes tyre + rim). */
+  /** Node names for FL, FR, RL, RR wheels (each includes tyre + rim, nothing else). */
   wheelNodes: ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'] as const,
-  /** Extra yaw so the model faces +Z. The Ferrari faces -Z, hence π. */
-  yawOffset: Math.PI,
+  /** Extra yaw so the model faces +Z. glTF's own forward is +Z, so 0. */
+  yawOffset: 0,
+  /**
+   * Movable wing flaps. The node origin is the hinge line (along X) and the flap extends
+   * backwards (-Z); the flap turns about its local X by `wing.*Angle × blend` from its rest pose.
+   */
+  wingNodes: { rear: ['wing_rear_flap'], front: ['wing_front_flap'] } as { rear: string[]; front: string[] },
+  /** Rotation (rad, + = trailing edge up) added at full straight mode. */
+  wing: { rearOpenAngle: 0.55, frontOpenAngle: -0.3 },
   /** Material names (lower-case substrings) → which replacement material to use. Checked in order. */
   materials: {
-    brakeLights: ['taillight'],
-    headlights: ['projector', 'headlight'],
-    glass: ['glass'],
-    paint: ['body_color', 'carpaint', 'paint'],
+    brakeLights: ['rainlight', 'light_rear', 'taillight'],
+    glass: ['visor', 'glass'],
+    /** Painted bodywork: gets the livery canvas texture. */
+    livery: ['livery'],
+    /** Parts that take the accent colour (endplates, helmet…). */
+    accent: ['accent'],
+    /** Sidewall marking: shows the tyre compound colour. */
+    tyreMarking: ['tyre_marking', 'tyremark'],
   },
-  paint: { color: 0xc8102e, metalness: 1.0, roughness: 0.45, clearcoat: 1.0, clearcoatRoughness: 0.03 },
+  /** Give the livery meshes top-down UVs (keeps the model's own UVs if false). */
+  generateLiveryUv: true,
   /**
    * Small / hidden parts (mesh names, regex). They never cast shadows, and remote cars
-   * further than detailDistance hide them — for the Ferrari that's ~190k of its ~360k
-   * triangles (cockpit, steering wheel, chrome, brake discs…), invisible at that range.
+   * further than detailDistance hide them.
    */
-  detailMeshes: /interior|leather|steering|chrome|carbon|plastic|trim|^brake(_\d+)?$|leds|wipers|grills|^metal$/i,
+  detailMeshes: /bolt|rivet|screw|cable|wire|detail|mirror|steering|brake_disc|disc/i,
   /** Parts that stay visible but don't cast shadows (see-through or tiny). */
-  noShadowMeshes: /glass|lights|leds/i,
+  noShadowMeshes: /glass|visor|light/i,
   detailDistance: 30,
   brakeLightIdle: 0.6,
   brakeLightOn: 4.0,
-  headlightIntensity: 2.0,
 };
 
 /**

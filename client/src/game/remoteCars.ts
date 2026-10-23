@@ -3,6 +3,7 @@ import {
   CAR,
   CAR_COLORS,
   CAR_MODEL,
+  presetLivery,
   INTERP_DELAY_MS,
   REMOTE_STALE_MS,
   RAPIER,
@@ -132,7 +133,7 @@ export class RemoteCars {
       keep.add(p.id);
       let car = this.cars.get(p.id);
       if (!car) {
-        const view = new CarView(this.factory(CAR_COLORS[p.color] ?? 0xffffff));
+        const view = new CarView(this.factory(presetLivery(p.color)));
         this.scene.add(view.root);
         view.root.visible = false;
         view.setGlassTransmission(this.glassTransmission);
@@ -148,7 +149,7 @@ export class RemoteCars {
         this.cars.set(p.id, car);
       }
       if (car.color !== p.color) {
-        car.view.setPaint(CAR_COLORS[p.color] ?? 0xffffff);
+        car.view.setLivery(presetLivery(p.color));
         car.color = p.color;
       }
       this.tags.set(p.id, p.name, hex(CAR_COLORS[p.color] ?? 0xffffff), p.connected ? '' : 'reconnecting…');
@@ -204,6 +205,7 @@ export class RemoteCars {
         car.view.update(car.pos, car.quat, car.wheels);
         car.view.setDetail(car.pos.distanceToSquared(camera.position) < DETAIL_DIST_SQ);
         car.view.setBraking(car.pose.b === 1);
+        car.view.setWingOpen(car.pose.a);
         car.updateMotion(this.world, dt);
         car.voice?.update(
           { rpm: car.drivetrain.rpm, load: car.drivetrain.load, slip: car.onGrass ? 0 : car.slip, scrape: 0, speed: Math.abs(car.speed) },

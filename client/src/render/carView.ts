@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { CAR_MODEL, type WheelState } from '@apex/shared';
+import { CAR_MODEL, type Livery, type WheelState } from '@apex/shared';
 
 /**
- * A car's visual parts, independent of where they came from (placeholder boxes now,
- * a GLTF later). Conventions — any model source must follow them:
+ * A car's visual parts, independent of where they came from (procedural primitives, or the
+ * GLB). Conventions — any model source must follow them:
  *  - `body` is positioned relative to the physics chassis origin (collision box centre),
  *    facing +Z, Y up. Bake any model offset/scale into `body`.
  *  - each wheel Object3D is centred on its own origin with its axle along X and no
@@ -17,12 +17,18 @@ export interface CarModel {
   brakeLights?: THREE.MeshStandardMaterial[];
   /** Glass materials; quality presets switch refraction (transmission) on/off. */
   glass?: THREE.MeshPhysicalMaterial[];
-  /** Body paint materials, recoloured when a player picks a different colour. */
-  paint?: THREE.MeshStandardMaterial[];
+  /** Repaints the bodywork (primary/secondary/accent colours + number). */
+  setLivery?: (livery: Livery) => void;
+  /** Sidewall marking materials, coloured by the tyre compound. */
+  tyreMarkings?: THREE.MeshStandardMaterial[];
+  /** Movable wing flaps (hinge at the node origin, see CAR_MODEL.wingNodes). */
+  wings?: { rear: THREE.Object3D[]; front: THREE.Object3D[] };
   /** Fine detail hidden on distant cars (level of detail). */
   detail?: THREE.Object3D[];
   /** Meshes that shouldn't cast shadows (hidden inside the body, see-through, tiny). */
   noShadow?: Set<THREE.Object3D>;
+  /** Frees what the model owns beyond its materials (textures, generated geometry). */
+  dispose?: () => void;
 }
 
 /** Places a CarModel from the physics pose + per-wheel state every frame. */
@@ -33,9 +39,14 @@ export class CarView {
   /** Child of the pivot, rotated for wheel spin (around X). */
   private readonly spinners: THREE.Group[] = [];
   private detailVisible = true;
+  /** Wing flaps with their rest rotation and how far they turn when fully open. */
+  private readonly flaps: { obj: THREE.Object3D; base: number; open: number }[] = [];
+  private wingBlend = -1;
 
   constructor(readonly model: CarModel) {
     this.root.add(model.body);
+    for (const obj of model.wings?.rear ?? []) this.flaps.push({ obj, base: obj.rotation.x, open: CAR_MODEL.wing.rearOpenAngle });
+    for (const obj of model.wings?.front ?? []) this.flaps.push({ obj, base: obj.rotation.x, open: CAR_MODEL.wing.frontOpenAngle });
     for (const wheel of model.wheels) {
       const pivot = new THREE.Group();
       const spinner = new THREE.Group();
@@ -72,8 +83,23 @@ export class CarView {
     for (const o of this.model.detail ?? []) o.visible = visible;
   }
 
-  setPaint(color: THREE.ColorRepresentation): void {
-    for (const m of this.model.paint ?? []) m.color.set(color);
+  setLivery(livery: Livery): void {
+    this.model.setLivery?.(livery);
+  }
+
+  /** Wing opening 0 (corner mode, closed) .. 1 (straight mode, open). */
+  setWingOpen(blend: number): void {
+    if (Math.abs(blend - this.wingBlend) < 0.004) return;
+    this.wingBlend = blend;
+    for (const f of this.flaps) f.obj.rotation.x = f.base + f.open * blend;
+  }
+
+  /** Tyre compound colour on the sidewall markings. */
+  setTyreColor(color: THREE.ColorRepresentation): void {
+    for (const m of this.model.tyreMarkings ?? []) {
+      m.color.set(color);
+      m.emissive.set(color);
+    }
   }
 
   setBraking(on: boolean): void {
@@ -104,5 +130,6 @@ export class CarView {
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) seen.add(m);
     });
     for (const m of seen) m.dispose();
+    this.model.dispose?.();
   }
 }
