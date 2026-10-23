@@ -11,9 +11,11 @@ import {
   presetLivery,
   type Compound,
   type Livery,
+  type TrackIndexEntry,
   type TyreWearSetting,
 } from '@apex/shared';
 import type { Session } from '../game/session.ts';
+import { drawTrackPreview } from './trackSelect.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
@@ -23,14 +25,22 @@ export interface LobbyHandlers {
   onStart(): void;
   onLaps(laps: number): void;
   onTyreWear(wear: TyreWearSetting): void;
+  /** Host clicked "Change": open the track picker. */
+  onChooseTrack(): void;
 }
 
 /** Pre-race screen: name, colour, who's here, and the host's Start button. */
-export function createLobby(root: HTMLElement, session: Session, handlers: LobbyHandlers) {
+export function createLobby(root: HTMLElement, session: Session, handlers: LobbyHandlers, tracks: () => TrackIndexEntry[]) {
   root.innerHTML = `
     <div class="lobby-panel">
       <h1>apex-lan</h1>
       <p class="lobby-join">Friends join at <b>${esc(location.host)}</b></p>
+      <div class="lobby-label">Track</div>
+      <div class="lobby-track">
+        <canvas class="lobby-track-map"></canvas>
+        <div class="lobby-track-info"><b class="lobby-track-name"></b><span class="lobby-track-meta"></span></div>
+        <button type="button" class="lobby-track-change">Change</button>
+      </div>
       <label class="lobby-label" for="lobby-name">Your name</label>
       <input id="lobby-name" class="lobby-name" maxlength="${NAME_MAX_LENGTH}" autocomplete="off" spellcheck="false" placeholder="Driver name" />
       <div class="lobby-label">Car colour</div>
@@ -120,6 +130,12 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
       if (session.isHost && b.dataset.wear !== session.race.tyreWear) handlers.onTyreWear(b.dataset.wear as TyreWearSetting);
     });
   }
+  const trackMap = root.querySelector<HTMLCanvasElement>('.lobby-track-map')!;
+  const trackName = root.querySelector<HTMLElement>('.lobby-track-name')!;
+  const trackMeta = root.querySelector<HTMLElement>('.lobby-track-meta')!;
+  const trackChange = root.querySelector<HTMLButtonElement>('.lobby-track-change')!;
+  trackChange.addEventListener('click', () => handlers.onChooseTrack());
+  let shownTrack = '';
   start.addEventListener('click', () => handlers.onStart());
   const lapsValue = root.querySelector<HTMLElement>('.lobby-laps-value')!;
   const lapsHint = root.querySelector<HTMLElement>('.lobby-laps-hint')!;
@@ -184,6 +200,16 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
       b.disabled = !session.isHost;
     }
     wearHint.textContent = session.isHost ? '' : 'set by the host';
+
+    const entry = tracks().find((t) => t.id === session.race.trackId);
+    const key = `${session.race.trackId}|${entry ? 1 : 0}`;
+    if (key !== shownTrack) {
+      shownTrack = key;
+      trackName.textContent = entry ? `${entry.name}, ${entry.country}` : session.race.trackId;
+      trackMeta.textContent = entry ? `${entry.lengthKm.toFixed(2)} km${entry.street ? ' · street circuit' : ''}` : '';
+      if (entry) requestAnimationFrame(() => drawTrackPreview(trackMap, entry, { width: 2 }));
+    }
+    trackChange.hidden = !session.isHost;
 
     lapsValue.textContent = String(session.race.laps);
     for (const b of lapButtons) {

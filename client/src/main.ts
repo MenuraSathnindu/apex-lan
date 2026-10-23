@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   APEX_PARK,
+  TRACKS,
   ASSETS,
   CAR,
   FX,
@@ -19,15 +20,20 @@ import {
   lapBudgetLeft,
   newErsLap,
   packCarState,
+  parseTrackFile,
   readWheelStates,
   refillErs,
+  removeTrackColliders,
   resetVehicle,
   stepVehicle,
+  trackIndexEntry,
   vehicleSpeed,
   type CarInput,
+  type BuiltTrack,
   type CarState,
   type Compound,
   type S2C,
+  type TrackIndexEntry,
   type WheelState,
 } from '@apex/shared';
 import { AudioSystem } from './audio/audioSystem.ts';
@@ -60,6 +66,7 @@ import { createRaceOverlay } from './ui/raceOverlay.ts';
 import { createResults } from './ui/results.ts';
 import { createFpsCounter } from './ui/fpsCounter.ts';
 import { createMenu } from './ui/menu.ts';
+import { createTrackSelect } from './ui/trackSelect.ts';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const loading = createLoadingScreen($('#loading'));
@@ -111,15 +118,16 @@ const socket = connect({
 await initRapier();
 /** Our paint scheme: the server's copy once we have joined, else what we last chose. */
 const myLivery = () => session.livery;
-const track = buildTrack(APEX_PARK);
+// Start on the built-in track; the room tells us which one it's on and we switch.
+let track: BuiltTrack = buildTrack(APEX_PARK);
 world = createWorld();
-addTrackColliders(world, track);
+let trackColliders = addTrackColliders(world, track);
 const car = createVehicle(world, track.spawnGrid[0]!);
 
 // --- Graphics + assets (each asset falls back to a procedural version if missing).
 const gfx = new Graphics($('#game'));
 const quality = new QualityManager();
-const [trackView, carFactory, audio] = await Promise.all([
+const [firstTrackView, carFactory, audio] = await Promise.all([
   TrackView.create(track),
   loadGltfCarFactory(ASSETS.car, CAR, myLivery()).catch((err: unknown): CarFactory => {
     console.warn(`[assets] Car model not loaded from /${ASSETS.car} — using the built-in open-wheel car. See docs/OPENWHEEL_MODEL.md.`, err);
@@ -130,6 +138,7 @@ const [trackView, carFactory, audio] = await Promise.all([
 ]);
 const voice = new CarVoice(audio, false);
 const localFx = new LocalCarFx();
+let trackView = firstTrackView;
 gfx.scene.add(trackView.group);
 const carView = new CarView(carFactory(myLivery()));
 gfx.scene.add(carView.root);
@@ -164,6 +173,54 @@ settings.subscribe((s) => {
   fpsCounter.show(s.showFps);
 });
 
+// --- Tracks: the built-in ones plus everything generated into /tracks (index.json).
+let trackList: TrackIndexEntry[] = Object.values(TRACKS).map(trackIndexEntry);
+void fetch('/tracks/index.json')
+  .then((r) => (r.ok && !(r.headers.get('content-type') ?? '').includes('text/html') ? r.json() : []))
+  .then((list: TrackIndexEntry[]) => {
+    trackList = [...Object.values(TRACKS).map(trackIndexEntry), ...list];
+    lobby.update();
+  })
+  .catch(() => console.warn('[tracks] no generated tracks (client/public/tracks/index.json) — only the built-in one.'));
+const trackSelect = createTrackSelect($('#track-select'), (trackId) => socket.send({ t: 'setTrack', trackId }));
+const trackLoading = $('#track-loading');
+
+/** The track the room wants; the one we have may still be loading. */
+let wantedTrack = track.def.id;
+async function switchTrack(id: string) {
+  wantedTrack = id;
+  if (id === track.def.id) return;
+  const entry = trackList.find((t) => t.id === id);
+  trackLoading.textContent = `Loading ${entry ? `${entry.name}, ${entry.country}` : id}…`;
+  trackLoading.hidden = false;
+  try {
+    const def = TRACKS[id] ?? parseTrackFile(await (await fetch(`/tracks/${encodeURIComponent(id)}.json`)).json());
+    if (wantedTrack !== id) return;
+    const next = buildTrack(def);
+    const view = await TrackView.create(next);
+    if (wantedTrack !== id) {
+      view.dispose();
+      return;
+    }
+    removeTrackColliders(world!, trackColliders);
+    trackColliders = addTrackColliders(world!, next);
+    trackView.dispose();
+    gfx.scene.add(view.group);
+    track = next;
+    trackView = view;
+    applyQuality();
+    hud.setTrack(next);
+    raceController.setTrack(next, buildCheckpoints(next));
+    effects.clear();
+    pending = { kind: 'grid' };
+    if (import.meta.env.DEV) Object.assign((window as unknown as { __apex: object }).__apex, { track, trackView });
+  } catch (err) {
+    console.warn(`[tracks] could not load track ${id}`, err);
+  } finally {
+    if (wantedTrack === id) trackLoading.hidden = true;
+  }
+}
+
 // --- Room / race flow.
 const lobby = createLobby($('#lobby'), session, {
   onProfile(name, color, livery, tyre) {
@@ -178,7 +235,10 @@ const lobby = createLobby($('#lobby'), session, {
   onTyreWear(wear) {
     socket.send({ t: 'setTyreWear', wear });
   },
-});
+  onChooseTrack() {
+    trackSelect.show(trackList, session.race.trackId);
+  },
+}, () => trackList);
 const raceOverlay = createRaceOverlay(
   $('#race'),
   session,
@@ -225,6 +285,7 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
   if (session.race.phase === 'lobby') car.tyres.compound = session.tyre;
   carView.setTyreColor(CAR.tyres.compounds[car.tyres.compound].color);
   remoteCars.syncRoster(session.players, session.myId);
+  if (session.race.trackId !== wantedTrack) void switchTrack(session.race.trackId);
   lobby.update();
 };
 onRoomChange = applyRoom;
