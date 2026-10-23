@@ -1,5 +1,13 @@
+import { CAR, type Compound } from '@apex/shared';
+
+const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+
 /** What the power-unit panel shows, gathered from the local car every frame. */
 export interface PowerFrame {
+  /** Tyre compound, wear 0..1, and whether wear is on for this race. */
+  compound: Compound;
+  wear: number;
+  wearOn: boolean;
   /** Battery 0..1 and how much of this lap's deploy budget is left 0..1. */
   charge: number;
   budget: number;
@@ -22,6 +30,7 @@ export function createPowerHud(root: HTMLElement) {
     <div class="pw-overtake" hidden>OVERTAKE AVAILABLE<span class="pw-gap"></span></div>
     <div class="pw-row">
       <span class="pw-aero" data-mode="corner">CORNER</span>
+      <span class="pw-tyre" title="Tyre compound and wear"><b class="pw-tyre-dot"></b><span class="pw-tyre-wear"></span></span>
       <span class="pw-zone" hidden>STRAIGHT ZONE <b class="pw-aero-key"></b></span>
     </div>
     <div class="pw-battery" title="Battery">
@@ -41,7 +50,9 @@ export function createPowerHud(root: HTMLElement) {
   const pct = $('.pw-pct');
   const state = $('.pw-state');
   const budget = $('.pw-budget-fill');
-  const last = { pct: -1, budget: -1, state: '', mode: '', zone: false, overtake: false, gap: '' };
+  const tyreDot = $('.pw-tyre-dot');
+  const tyreWear = $('.pw-tyre-wear');
+  const last = { pct: -1, budget: -1, state: '', mode: '', zone: false, overtake: false, gap: '', tyre: '' };
 
   return {
     setKeys(aeroKey: string, boostKey: string) {
@@ -84,6 +95,17 @@ export function createPowerHud(root: HTMLElement) {
       if (f.overtake !== last.overtake) {
         overtake.hidden = !f.overtake;
         last.overtake = f.overtake;
+      }
+      // Tyre: compound letter in its colour, and how much tread is left.
+      const left = Math.round((1 - f.wear) * 100);
+      const tyre = `${f.compound}|${f.wearOn ? left : -1}`;
+      if (tyre !== last.tyre) {
+        const c = CAR.tyres.compounds[f.compound];
+        tyreDot.textContent = c.label[0]!;
+        tyreDot.style.borderColor = hex(c.color);
+        tyreWear.textContent = f.wearOn ? `${left}%` : '';
+        tyreWear.classList.toggle('worn', f.wearOn && f.wear > CAR.tyres.cliffStart);
+        last.tyre = tyre;
       }
       const gap = f.overtake && f.gap !== null ? ` +${f.gap.toFixed(2)}s` : '';
       if (gap !== last.gap) {

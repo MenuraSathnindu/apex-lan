@@ -84,6 +84,28 @@ describe('Room', () => {
     expect(a.last('roster').players[0]!.livery).toEqual({ ...presetLivery(5), number: 77 });
   });
 
+  it('lets players pick a tyre compound in the lobby only, and the host set tyre wear', () => {
+    const { room, join, advance } = setup();
+    const host = join('Ann');
+    const guest = join('Ben');
+    expect(host.last('roster').players.map((p) => p.tyre)).toEqual(['medium', 'medium']);
+    room.handle(guest, { t: 'profile', name: 'Ben', color: 1, tyre: 'soft' });
+    expect(guest.last('roster').players[1]!.tyre).toBe('soft');
+    room.handle(guest, { t: 'profile', name: 'Ben', color: 1, tyre: 'slick' as never });
+    expect(guest.last('roster').players[1]!.tyre).toBe('soft');
+
+    room.handle(guest, { t: 'setTyreWear', wear: 'high' });
+    expect(guest.inbox.some((m) => m.t === 'race' && m.race.tyreWear === 'high')).toBe(false);
+    room.handle(host, { t: 'setTyreWear', wear: 'off' });
+    expect(guest.last('race').race.tyreWear).toBe('off');
+
+    room.handle(host, { t: 'start' });
+    advance(COUNTDOWN_MS + 10);
+    room.update();
+    room.handle(guest, { t: 'profile', name: 'Ben', color: 1, tyre: 'hard' });
+    expect(guest.last('roster').players[1]!.tyre).toBe('soft');
+  });
+
   it('sanitises names', () => {
     const { join } = setup();
     const a = join('  \u0007Zed the very long name indeed  ');

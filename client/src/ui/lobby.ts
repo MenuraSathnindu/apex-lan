@@ -1,13 +1,28 @@
-import { CAR_COLORS, CAR_COLOR_NAMES, LIVERY, MAX_PLAYERS, NAME_MAX_LENGTH, RACE, presetLivery, type Livery } from '@apex/shared';
+import {
+  CAR,
+  CAR_COLORS,
+  CAR_COLOR_NAMES,
+  COMPOUNDS,
+  LIVERY,
+  MAX_PLAYERS,
+  NAME_MAX_LENGTH,
+  RACE,
+  TYRE_WEAR_SETTINGS,
+  presetLivery,
+  type Compound,
+  type Livery,
+  type TyreWearSetting,
+} from '@apex/shared';
 import type { Session } from '../game/session.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 export interface LobbyHandlers {
-  onProfile(name: string, color: number, livery: Livery): void;
+  onProfile(name: string, color: number, livery: Livery, tyre: Compound): void;
   onStart(): void;
   onLaps(laps: number): void;
+  onTyreWear(wear: TyreWearSetting): void;
 }
 
 /** Pre-race screen: name, colour, who's here, and the host's Start button. */
@@ -30,6 +45,18 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
         <label title="Stripes and number roundels"><input type="color" data-livery="secondary" /><span>Secondary</span></label>
         <label title="Pinstripes, wing endplates"><input type="color" data-livery="accent" /><span>Accent</span></label>
         <label title="Race number"><input type="number" class="lobby-number" min="0" max="${LIVERY.numberMax}" step="1" /><span>Number</span></label>
+      </div>
+      <div class="lobby-label">Tyres</div>
+      <div class="lobby-tyres">
+        ${COMPOUNDS.map((c) => {
+          const t = CAR.tyres.compounds[c];
+          return `<button type="button" class="lobby-tyre" data-tyre="${c}" style="--c:${hex(t.color)}" title="Grip ×${t.grip}, wear ×${t.wearRate}"><b>${t.label[0]}</b>${t.label}</button>`;
+        }).join('')}
+      </div>
+      <div class="lobby-label">Tyre wear</div>
+      <div class="lobby-wear">
+        ${TYRE_WEAR_SETTINGS.map((w) => `<button type="button" class="lobby-wear-btn" data-wear="${w}">${w[0]!.toUpperCase() + w.slice(1)}</button>`).join('')}
+        <span class="lobby-wear-hint"></span>
       </div>
       <div class="lobby-label">Laps</div>
       <div class="lobby-laps">
@@ -58,7 +85,7 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
   let nameTimer: ReturnType<typeof setTimeout> | undefined;
   const sendSoon = (livery = session.livery) => {
     clearTimeout(nameTimer);
-    nameTimer = setTimeout(() => handlers.onProfile(nameInput.value, session.profile.color, livery), 250);
+    nameTimer = setTimeout(() => handlers.onProfile(nameInput.value, session.profile.color, livery, session.tyre), 250);
   };
   nameInput.addEventListener('input', () => sendSoon());
 
@@ -79,7 +106,18 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
       if (b.disabled) return;
       // A colour picks that preset scheme, keeping your number.
       const color = Number(b.dataset.color);
-      handlers.onProfile(nameInput.value, color, { ...presetLivery(color), number: session.livery.number });
+      handlers.onProfile(nameInput.value, color, { ...presetLivery(color), number: session.livery.number }, session.tyre);
+    });
+  }
+  const tyreButtons = [...root.querySelectorAll<HTMLButtonElement>('.lobby-tyre')];
+  for (const b of tyreButtons) {
+    b.addEventListener('click', () => handlers.onProfile(nameInput.value, session.profile.color, session.livery, b.dataset.tyre as Compound));
+  }
+  const wearButtons = [...root.querySelectorAll<HTMLButtonElement>('.lobby-wear-btn')];
+  const wearHint = root.querySelector<HTMLElement>('.lobby-wear-hint')!;
+  for (const b of wearButtons) {
+    b.addEventListener('click', () => {
+      if (session.isHost && b.dataset.wear !== session.race.tyreWear) handlers.onTyreWear(b.dataset.wear as TyreWearSetting);
     });
   }
   start.addEventListener('click', () => handlers.onStart());
@@ -139,6 +177,13 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
         </li>`;
       })
       .join('');
+
+    for (const b of tyreButtons) b.classList.toggle('selected', b.dataset.tyre === session.tyre);
+    for (const b of wearButtons) {
+      b.classList.toggle('selected', b.dataset.wear === session.race.tyreWear);
+      b.disabled = !session.isHost;
+    }
+    wearHint.textContent = session.isHost ? '' : 'set by the host';
 
     lapsValue.textContent = String(session.race.laps);
     for (const b of lapButtons) {

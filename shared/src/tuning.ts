@@ -185,6 +185,31 @@ export const CAR = {
   },
 
   /**
+   * Tyre compounds: grip (× frictionSlip) against wear rate. Wear builds with distance and
+   * more under load; grip fades slowly, then falls off a cliff. On a ~1.2 km lap at racing
+   * pace (normal setting) a medium loses ~8 % per lap, a soft ~15 %, a hard ~5 %.
+   */
+  tyres: {
+    compounds: {
+      soft: { grip: 1.06, wearRate: 1.8, color: 0xe8202a, label: 'Soft' },
+      medium: { grip: 1.0, wearRate: 1.0, color: 0xf2c200, label: 'Medium' },
+      hard: { grip: 0.94, wearRate: 0.55, color: 0xf0f0f0, label: 'Hard' },
+    },
+    /** Wear per km for a medium at zero load (fraction of the tyre). */
+    wearPerKm: 0.045,
+    /** Extra wear per g² of horizontal acceleration (cornering, braking, traction). */
+    loadFactor: 0.15,
+    /** Accelerations above this (impacts, resets) count as this. */
+    maxLoadG: 6,
+    /** Grip lost linearly over the tyre's life, and extra lost past the cliff (quadratic). */
+    wearGripLoss: 0.08,
+    cliffStart: 0.7,
+    cliffLoss: 0.25,
+    /** Wear multiplier per race setting (host picks it in the lobby). */
+    wearSettings: { off: 0, normal: 1, high: 2.5 },
+  },
+
+  /**
    * Per-surface tyre behaviour, looked up from the collider each wheel is touching.
    * grip multiplies frictionSlip; drag is extra rolling resistance per wheel (N per m/s).
    */

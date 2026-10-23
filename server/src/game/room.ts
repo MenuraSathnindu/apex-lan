@@ -10,6 +10,8 @@ import {
   COUNTDOWN_MS,
   MAX_PLAYERS,
   REJOIN_GRACE_MS,
+  isCompound,
+  isTyreWearSetting,
   isValidCarState,
   presetLivery,
   sanitizeLivery,
@@ -17,6 +19,7 @@ import {
   type C2S,
   type CarSnapshot,
   type CarState,
+  type Compound,
   type Livery,
   type PlayerInfo,
   type RaceState,
@@ -39,6 +42,7 @@ interface Player {
   name: string;
   color: number;
   livery: Livery;
+  tyre: Compound;
   slot: number;
   joinedAt: number;
   conn: Connection | null;
@@ -66,7 +70,7 @@ export class Room {
   private readonly byConn = new Map<Connection, Player>();
   private nextId = 1;
   private hostId = 0;
-  private race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0 };
+  private race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0, tyreWear: 'normal' };
   private readonly now: () => number;
   private readonly log: (msg: string) => void;
   private readonly track;
@@ -99,6 +103,8 @@ export class Room {
     switch (msg.t) {
       case 'profile':
         this.setProfile(player, msg.name, msg.color, msg.livery);
+        // Tyres are fitted on the grid: no changing compound mid-race.
+        if (isCompound(msg.tyre) && this.race.phase === 'lobby') player.tyre = msg.tyre;
         this.broadcastRoster();
         break;
       case 'state':
@@ -115,6 +121,12 @@ export class Room {
         const laps = Math.round(Number(msg.laps));
         if (!Number.isFinite(laps)) return;
         this.race = { ...this.race, laps: Math.max(RACE.minLaps, Math.min(RACE.maxLaps, laps)) };
+        this.broadcast({ t: 'race', race: this.race });
+        break;
+      }
+      case 'setTyreWear': {
+        if (player.id !== this.hostId || this.race.phase !== 'lobby' || !isTyreWearSetting(msg.wear)) return;
+        this.race = { ...this.race, tyreWear: msg.wear };
         this.broadcast({ t: 'race', race: this.race });
         break;
       }
@@ -250,6 +262,7 @@ export class Room {
         name: `Player ${this.nextId - 1}`,
         color: 0,
         livery: presetLivery(0),
+        tyre: isCompound(msg.tyre) ? msg.tyre : 'medium',
         slot,
         joinedAt: now,
         conn,
@@ -337,7 +350,7 @@ export class Room {
   private roster(): PlayerInfo[] {
     return [...this.players.values()]
       .sort((a, b) => a.slot - b.slot)
-      .map((p) => ({ id: p.id, name: p.name, color: p.color, slot: p.slot, connected: !!p.conn, livery: p.livery }));
+      .map((p) => ({ id: p.id, name: p.name, color: p.color, slot: p.slot, connected: !!p.conn, livery: p.livery, tyre: p.tyre }));
   }
 
   private broadcastRoster() {

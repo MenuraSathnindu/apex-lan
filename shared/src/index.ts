@@ -22,4 +22,5 @@ export * from './physics/vehicleFx.ts';
 export * from './livery.ts';
 export * from './physics/aero.ts';
 export * from './physics/ers.ts';
+export * from './physics/tyres.ts';
 export * from './track/zones.ts';

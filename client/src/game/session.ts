@@ -1,4 +1,4 @@
-import { CAR_COLORS, NAME_MAX_LENGTH, RACE, presetLivery, sanitizeLivery, type Livery, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
+import { CAR_COLORS, NAME_MAX_LENGTH, RACE, isCompound, presetLivery, sanitizeLivery, type Compound, type Livery, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
 
 const PROFILE_KEY = 'apex.profile';
 const SESSION_KEY = 'apex.session';
@@ -8,6 +8,7 @@ interface Profile {
   color: number;
   /** Missing in profiles saved before liveries existed. */
   livery?: Livery;
+  tyre?: Compound;
 }
 
 function read<T>(storage: () => Storage, key: string): T | null {
@@ -37,7 +38,7 @@ export class Session {
   myId = 0;
   hostId = 0;
   players: PlayerInfo[] = [];
-  race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0 };
+  race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0, tyreWear: 'normal' };
   connected = false;
   full = false;
   /** Latest ranking from the server (empty in the lobby). */
@@ -72,7 +73,7 @@ export class Session {
   }
 
   hello(): C2S {
-    return { t: 'hello', sessionId: this.sessionId, name: this.profile.name, color: this.profile.color, livery: this.livery };
+    return { t: 'hello', sessionId: this.sessionId, name: this.profile.name, color: this.profile.color, livery: this.livery, tyre: this.tyre };
   }
 
   /** Our paint scheme: the server's copy once joined, else what we last chose (validated). */
@@ -80,8 +81,13 @@ export class Session {
     return this.me?.livery ?? sanitizeLivery(this.profile.livery, presetLivery(this.profile.color));
   }
 
-  setProfile(name: string, color: number, livery: Livery = this.livery): C2S {
-    this.profile = { name: name.slice(0, NAME_MAX_LENGTH), color: Math.max(0, Math.min(CAR_COLORS.length - 1, color)), livery };
+  /** Our tyre compound: the server's copy once joined, else what we last chose. */
+  get tyre(): Compound {
+    return this.me?.tyre ?? (isCompound(this.profile.tyre) ? this.profile.tyre : 'medium');
+  }
+
+  setProfile(name: string, color: number, livery: Livery = this.livery, tyre: Compound = this.tyre): C2S {
+    this.profile = { name: name.slice(0, NAME_MAX_LENGTH), color: Math.max(0, Math.min(CAR_COLORS.length - 1, color)), livery, tyre };
     write(() => localStorage, PROFILE_KEY, this.profile);
     return { t: 'profile', ...this.profile };
   }
@@ -97,7 +103,7 @@ export class Session {
         this.sessionId = msg.sessionId;
         write(() => sessionStorage, SESSION_KEY, msg.sessionId);
         // The server may have given us a different colour (ours was taken).
-        if (this.me) this.profile = { ...this.profile, color: this.me.color, livery: this.me.livery };
+        if (this.me) this.profile = { ...this.profile, color: this.me.color, livery: this.me.livery, tyre: this.me.tyre };
         return true;
       case 'roster':
         this.hostId = msg.hostId;

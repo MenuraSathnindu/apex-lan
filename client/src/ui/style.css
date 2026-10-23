@@ -1207,3 +1207,74 @@ body {
   font-variant-numeric: tabular-nums;
   opacity: 0.7;
 }
+
+.pw-tyre {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pw-tyre-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #15161a;
+  font-size: 10px;
+}
+
+.pw-tyre-wear.worn {
+  color: #ff7b5a;
+}
+
+.lobby-tyres,
+.lobby-wear {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.lobby-tyre,
+.lobby-wear-btn {
+  padding: 6px 10px;
+  border: 1px solid #3a3f4b;
+  border-radius: 8px;
+  background: #0f1116;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lobby-tyre b {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border: 3px solid var(--c);
+  border-radius: 50%;
+  font-size: 10px;
+}
+
+.lobby-tyre.selected,
+.lobby-wear-btn.selected {
+  border-color: #fff;
+  background: #262a35;
+}
+
+.lobby-wear-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.lobby-wear-btn.selected:disabled {
+  opacity: 1;
+}
+
+.lobby-wear-hint {
+  font-size: 12px;
+  opacity: 0.6;
+}

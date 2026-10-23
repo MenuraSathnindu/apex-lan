@@ -2,6 +2,7 @@
 // reports its state; the server owns the room (players, host, race phase) and relays car states.
 
 import type { Livery } from '../livery.ts';
+import type { Compound, TyreWearSetting } from '../physics/tyres.ts';
 import type { DetectionEvent, LapEvent, Standing } from '../race/raceTracker.ts';
 
 export type RacePhase = 'lobby' | 'countdown' | 'racing' | 'results';
@@ -16,6 +17,8 @@ export interface PlayerInfo {
   connected: boolean;
   /** Paint scheme and race number. */
   livery: Livery;
+  /** Tyre compound for the next/current race. */
+  tyre: Compound;
 }
 
 export interface RaceState {
@@ -28,6 +31,8 @@ export interface RaceState {
   laps: number;
   /** Server time results will be shown at the latest (0 until someone finishes). */
   finishDeadline: number;
+  /** Tyre wear for the race (host picks it in the lobby). */
+  tyreWear: TyreWearSetting;
 }
 
 /** A car's state as reported by its owner. Numbers are rounded to keep messages small. */
@@ -58,11 +63,12 @@ export interface CarSnapshot extends CarState {
 
 /** Client -> Server messages. */
 export type C2S =
-  | { t: 'hello'; sessionId: string | null; name: string; color: number; livery?: Livery }
-  | { t: 'profile'; name: string; color: number; livery?: Livery }
+  | { t: 'hello'; sessionId: string | null; name: string; color: number; livery?: Livery; tyre?: Compound }
+  | { t: 'profile'; name: string; color: number; livery?: Livery; tyre?: Compound }
   | { t: 'state'; s: CarState }
   | { t: 'start' }
   | { t: 'setLaps'; laps: number }
+  | { t: 'setTyreWear'; wear: TyreWearSetting }
   | { t: 'endRace' }
   | { t: 'ping'; clientTime: number };
 

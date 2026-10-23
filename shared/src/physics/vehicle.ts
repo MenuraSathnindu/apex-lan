@@ -4,6 +4,7 @@ import { CAR_GROUPS, WHEEL_RAY_GROUPS } from './collisionGroups.ts';
 import { aeroCoefficients, createAero, stepAero, type AeroCoefficients, type AeroState } from './aero.ts';
 import { createErs, stepErs, type ErsState } from './ers.ts';
 import { surfaceOf } from './surfaces.ts';
+import { createTyres, stepTyres, tyreGrip, type TyreState } from './tyres.ts';
 import { RAPIER, type DynamicRayCastVehicleController, type RigidBody, type World } from './rapier.ts';
 
 /** Wheel order used everywhere: front-left, front-right, rear-left, rear-right. */
@@ -31,6 +32,10 @@ export interface Vehicle {
   readonly aero: AeroState;
   /** Battery / boost state. */
   readonly ers: ErsState;
+  /** Compound and wear. */
+  readonly tyres: TyreState;
+  /** Velocity at the end of the previous tick (for the tyre load). */
+  readonly prevVel: Vec3Like;
   /** Set by the game each tick: the car is inside a straight-mode zone of the track. */
   inAeroZone: boolean;
   /** What each wheel touched last tick (FL, FR, RL, RR). */
@@ -118,6 +123,8 @@ export function createVehicle(world: World, pose: SpawnPose, spec: CarSpec = CAR
     upsideDownTime: 0,
     aero: createAero(),
     ers: createErs(spec),
+    tyres: createTyres(),
+    prevVel: { x: 0, y: 0, z: 0 },
     inAeroZone: false,
     surfaces: ['asphalt', 'asphalt', 'asphalt', 'asphalt'],
   };
@@ -195,13 +202,22 @@ export function stepVehicle(v: Vehicle, input: CarInput, dt: number): void {
     controller.setWheelSideFrictionStiffness(i, lerp(hb.rearSideFrictionStiffness, w.sideFrictionStiffness.rear, v.rearGrip));
   }
 
-  // --- Tyre grip per wheel: base × handbrake × surface (from last tick's contact).
+  // --- Tyre wear from distance and load (horizontal acceleration since the last tick).
+  const lv = body.linvel();
+  const accelG = Math.hypot(lv.x - v.prevVel.x, lv.z - v.prevVel.z) / dt / 9.81;
+  v.prevVel.x = lv.x;
+  v.prevVel.y = lv.y;
+  v.prevVel.z = lv.z;
+  stepTyres(v.tyres, spec, absSpeed, accelG, dt);
+  const tyre = tyreGrip(v.tyres, spec);
+
+  // --- Tyre grip per wheel: base × handbrake × surface (from last tick's contact) × compound/wear.
   let surfaceDrag = 0;
   for (let i = 0; i < WHEEL_COUNT; i++) {
     const front = i < 2;
     const base = front ? w.frictionSlip.front : lerp(hb.rearFrictionSlip, w.frictionSlip.rear, v.rearGrip);
     const surface = spec.surfaces[v.surfaces[i]!];
-    controller.setWheelFrictionSlip(i, base * surface.grip);
+    controller.setWheelFrictionSlip(i, base * surface.grip * tyre);
     if (controller.wheelIsInContact(i)) surfaceDrag += surface.drag;
   }
 
@@ -246,7 +262,7 @@ export function stepVehicle(v: Vehicle, input: CarInput, dt: number): void {
     // What the steering asks for, capped by what the tyres can deliver (a = v·ω ≤ μ·g).
     // Downforce adds to the wheel load, so the grip limit grows with speed².
     const loadG = 9.81 + (coeff.downforce * absSpeed * absSpeed) / spec.chassis.mass;
-    const gripLimit = (w.frictionSlip.front * loadG) / absSpeed;
+    const gripLimit = (w.frictionSlip.front * tyre * loadG) / absSpeed;
     const targetYawRate = clamp((speed * Math.tan(v.steerAngle)) / wheelbase, -gripLimit, gripLimit);
     // Only remove excess rotation (oversteer); never add yaw the tyres aren't producing.
     const excess =
@@ -280,6 +296,7 @@ export function resetVehicle(v: Vehicle, pose?: SpawnPose): void {
   body.setRotation(yawQuat(target.yaw), true);
   body.setLinvel({ x: 0, y: 0, z: 0 }, true);
   body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  v.prevVel.x = v.prevVel.y = v.prevVel.z = 0;
   v.steerAngle = 0;
   v.rearGrip = 1;
   v.upsideDownTime = 0;

@@ -15,6 +15,7 @@ import {
   createWorld,
   gearLabel,
   initRapier,
+  fitTyres,
   lapBudgetLeft,
   newErsLap,
   packCarState,
@@ -25,6 +26,7 @@ import {
   vehicleSpeed,
   type CarInput,
   type CarState,
+  type Compound,
   type S2C,
   type WheelState,
 } from '@apex/shared';
@@ -164,14 +166,17 @@ settings.subscribe((s) => {
 
 // --- Room / race flow.
 const lobby = createLobby($('#lobby'), session, {
-  onProfile(name, color, livery) {
-    socket.send(session.setProfile(name, color, livery));
+  onProfile(name, color, livery, tyre) {
+    socket.send(session.setProfile(name, color, livery, tyre));
   },
   onStart() {
     socket.send({ t: 'start' });
   },
   onLaps(laps) {
     socket.send({ t: 'setLaps', laps });
+  },
+  onTyreWear(wear) {
+    socket.send({ t: 'setTyreWear', wear });
   },
 });
 const raceOverlay = createRaceOverlay(
@@ -193,6 +198,7 @@ let pending: { kind: 'grid' } | { kind: 'resume'; s: CarState } | null = null;
 const placeOnGrid = () => {
   resetVehicle(car, gridPose());
   refillErs(car.ers, car.spec);
+  fitTyres(car.tyres, car.spec, session.tyre, session.race.tyreWear);
   raceController.reset();
 };
 
@@ -215,6 +221,9 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
     localRaceId = msg.race.raceId;
   }
   if (session.me) carView.setLivery(myLivery());
+  // In the lobby the car shows the compound you picked; during a race, the set you started on.
+  if (session.race.phase === 'lobby') car.tyres.compound = session.tyre;
+  carView.setTyreColor(CAR.tyres.compounds[car.tyres.compound].color);
   remoteCars.syncRoster(session.players, session.myId);
   lobby.update();
 };
@@ -233,7 +242,7 @@ const renderQuat = new THREE.Quaternion();
 const wheels: WheelState[] = [];
 const fwdTmp = new THREE.Vector3();
 const hudMe = { x: 0, z: 0, yaw: 0, color: 0 };
-const hudPower = { charge: 0, budget: 0, deploying: false, harvesting: false, aeroBlend: 0, inZone: false, overtake: false, gap: null as number | null };
+const hudPower = { charge: 0, budget: 0, deploying: false, harvesting: false, aeroBlend: 0, inZone: false, overtake: false, gap: null as number | null, compound: 'medium' as Compound, wear: 0, wearOn: true };
 const HOLD: CarInput = { ...NEUTRAL_INPUT, handbrake: true };
 let lastInput: CarInput = HOLD;
 let tick = 0;
@@ -349,6 +358,9 @@ startLoop({
     hudPower.inZone = car.inAeroZone;
     hudPower.overtake = ers.overtake;
     hudPower.gap = session.lastDetection?.gap ?? null;
+    hudPower.compound = car.tyres.compound;
+    hudPower.wear = car.tyres.wear;
+    hudPower.wearOn = car.tyres.wearScale > 0;
     hud.update({
       dt: frameDt,
       speedMs: speed,
