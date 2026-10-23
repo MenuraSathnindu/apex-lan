@@ -35,7 +35,7 @@ Findings from reading the current code. Items marked ⛔ block a feature; the re
 
 | # | Where | Problem | Change |
 |---|---|---|---|
-| R1 ⛔ | `scripts/download-assets.mjs`, `client/public/CREDITS.md`, `docs/ASSETS.md`, `tuning.ts:29,53,245,251,263`, `ARCHITECTURE.md:391` | The default car is a real marque's model, named in comments, credits and the download script. Violates the trademark rule and the car isn't open-wheel anyway. | Remove the model + all mentions; rewrite `CAR_MODEL` comments generically; the open-wheel procedural model (phase 9) becomes the default. |
+| R1 ✅ | `scripts/download-assets.mjs`, `client/public/CREDITS.md`, `docs/ASSETS.md`, `tuning.ts:29,53,245,251,263`, `ARCHITECTURE.md:391` | The default car is a real marque's model, named in comments, credits and the download script. Violates the trademark rule and the car isn't open-wheel anyway. | Remove the model + all mentions; rewrite `CAR_MODEL` comments generically; the open-wheel procedural model (phase 9) becomes the default. |
 | R2 ⛔ | `tuning.ts` (519 lines, one `CAR` const; `CarSpec = typeof CAR`) | One global car. `CAR` is imported directly by `remoteCars`, `main`, `effects`, `drivetrain`, `handlingMetrics`, `bots`. Open-wheel needs a different spec (and per-team variants later). | Split `tuning.ts` into `tuning/{car,aero,ers,camera,graphics,race,audio,hud,…}.ts` re-exported from `tuning/index.ts`. Add `CAR_SPECS: Record<CarId, CarSpec>`; every consumer takes a `CarSpec` argument (default `DEFAULT_CAR`). `PlayerInfo.car` carries the id. |
 | R3 ⛔ | `protocol/messages.ts` `CarState`, `codec.ts` (JSON strings) | 12+ wheel numbers per car per message as JSON. Aero mode, ERS charge and boost flags would add more; the timing tower needs them for *remote* cars too. | Do the planned binary codec + quantization **now** (it was phase 8). Version it: `PROTOCOL_VERSION` in `hello`, server replies `incompatible` instead of mis-parsing. Rule 9 still holds (messages typed in `messages.ts`, all I/O through `codec.ts`). |
 | R4 ⛔ | `server/src/main.ts`, `net/staticFiles.ts` | Only GET static files + WS. Profiles need JSON APIs and an upload route. | Add `server/src/http/router.ts` (method+path table, body size limit, JSON helpers) in front of the static handler. |
@@ -62,6 +62,13 @@ Do R1–R7 and R13 in **p8**, R8–R10 and R12 right before the feature that nee
   is green with the old car model removed; bandwidth measured.
 
 ### p9 — Open-wheel car
+> **Status 2026-10-23:** done ahead of p8 at the user's request, on top of the existing single
+> `CAR` spec (R2's spec registry is still to do). Built: retune, downforce ∝ v², active aero with
+> track zones, ERS + server-granted overtake (`detect` message), livery editor (3 colours + number),
+> soft/medium/hard tyres with optional wear, paddle-shift sounds, power HUD, procedural car with
+> animated wings. Waiting on the user's `openwheel.glb` (`docs/OPENWHEEL_MODEL.md`). R1 (remove the
+> real-marque model) is done.
+
 - **Spec** (`CAR_SPECS['open-wheel']`): ~800 kg, 3.6 m wheelbase, wide track, very low CoM, stiff
   suspension, narrow chassis box. Wheels sit outside the body, so remote-proxy colliders need small
   wheel-guard boxes (otherwise cars pass through each other's wheels). No wheel-to-wheel launch /

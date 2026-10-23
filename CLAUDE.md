@@ -14,8 +14,11 @@ phase. If a decision changes, update that doc in the same change.
 > camera); Medium profiled to hold 60 fps on the host's Intel UHD iGPU. Most of Phase 6 done.
 > **Direction change (2026-10-23): becoming an open-wheel racing game** with real-world circuits, player
 > profiles and a championship mode. Full plan, refactor list and open decisions:
-> [`docs/OPEN_WHEEL_PLAN.md`](docs/OPEN_WHEEL_PLAN.md). **Next: Phase 8 — foundations** (refactors R1–R7/R13
-> from the plan, binary codec, trademark lint). Phase 6 leftovers: visual body roll, real tree models.
+> [`docs/OPEN_WHEEL_PLAN.md`](docs/OPEN_WHEEL_PLAN.md). **Phase 9 open-wheel car done ahead of 8 (2026-10-23,
+> at the user's request)**: retune, active aero, ERS + server-granted overtake, livery editor, tyre compounds,
+> paddle-shift sounds, power HUD, procedural car; waiting on the user's `openwheel.glb`
+> ([`docs/OPENWHEEL_MODEL.md`](docs/OPENWHEEL_MODEL.md)). **Next: Phase 8 — foundations** (refactors R2–R7/R13,
+> binary codec, trademark lint). Phase 6 leftovers: visual body roll, real tree models.
 > Update this line when a phase's exit criteria are met.
 
 ## Trademark rule (non-negotiable — the project will be open source)
@@ -65,8 +68,10 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 ## Conventions
 - **Units:** metres, seconds, kilograms, radians. **Y up. Car forward = +Z** (glTF convention), so chassis left = +X. Wheel order everywhere: FL, FR, RL, RR.
 - **Steering sign:** `CarInput.steer` +1 = right. Rapier wheel steering angle + = left, so `vehicle.ts` negates it.
-- **All tuning** lives in `shared/src/tuning.ts`: car handling + surfaces (`CAR`), `CAMERA`, `INPUT`, graphics (`ASSETS`, `ENVIRONMENT`, `CAR_MODEL` incl. LOD, `QUALITY` presets, `AUTO_QUALITY`, `POST`), `RACE`, the sound/HUD gearbox (`DRIVETRAIN`), effects (`FX`), `AUDIO` and `HUD`. Engine/net constants (tick rate, ports, interp delay) live in `shared/src/constants.ts`. No magic numbers in logic.
-- Car visuals go through `CarModel` (`client/src/render/carView.ts`): `{ body, wheels[4], brakeLights?, glass? }` with wheels centred, axle along X. `gltfCarModel.ts` fits any GLB to the physics car (wheelbase scale, wheel alignment, material swap by name); `boxCarModel.ts` is the fallback.
+- **All tuning** lives in `shared/src/tuning.ts`: car handling, aero modes, ERS, tyre compounds + surfaces (`CAR`), `LIVERY` (canvas layout), `CAMERA`, `INPUT`, graphics (`ASSETS`, `ENVIRONMENT`, `CAR_MODEL` incl. LOD, `QUALITY` presets, `AUTO_QUALITY`, `POST`), `RACE`, the sound/HUD gearbox (`DRIVETRAIN`), effects (`FX`), `AUDIO` and `HUD`. Engine/net constants (tick rate, ports, interp delay) live in `shared/src/constants.ts`. No magic numbers in logic.
+- Car visuals go through `CarModel` (`client/src/render/carView.ts`): `{ body, wheels[4], wings?, setLivery?, tyreMarkings?, brakeLights?, glass?, dispose? }` with wheels centred, axle along X. `gltfCarModel.ts` fits `models/openwheel.glb` to the physics car (contract: `docs/OPENWHEEL_MODEL.md`); `openWheelCarModel.ts` is the procedural fallback and must keep following the same contract.
+- **Liveries** are data (`shared/src/livery.ts`: 3 colours + number, fictional presets per grid colour), validated by the server (`sanitizeLivery`) and painted on a canvas (`liveryTexture.ts`) projected from above. Never ship real team liveries or numbers as presets.
+- **Open-wheel sim state** lives on `Vehicle` and is stepped deterministically inside `stepVehicle`: `aero` (wing blend; needs `inAeroZone` set by the client before the step), `ers` (battery; `overtake` is set only from the server's `detect` message), `tyres` (compound + wear; fitted on the grid with `fitTyres`).
 - **Every asset is optional.** Missing files → procedural fallback + a `[assets]` console warning. Keep it that way: the game must run straight after `git clone && npm install`.
 - Tracks are pure data (`shared/src/track/tracks.ts`) → `buildTrack()` → mesh data for the client and colliders for physics. Validate new layouts with `track.test.ts` (corner radius, self-separation).
 - Race rules/tuning: `RACE` in `tuning.ts` (laps, checkpoint spacing, finish grace, respawn timers). Checkpoints are invisible gates every ~100 m (`buildCheckpoints`), gate 0 = start line; cars start behind it, so lap 1 includes the run from the grid.

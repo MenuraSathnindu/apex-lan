@@ -19,8 +19,8 @@ const FILES = [
   [`${PH}/Textures/jpg/2k/leafy_grass/leafy_grass_diff_2k.jpg`, 'textures/leafy_grass_diff_2k.jpg'],
   [`${PH}/Textures/jpg/2k/leafy_grass/leafy_grass_nor_gl_2k.jpg`, 'textures/leafy_grass_nor_gl_2k.jpg'],
   [`${PH}/Textures/jpg/2k/leafy_grass/leafy_grass_rough_2k.jpg`, 'textures/leafy_grass_rough_2k.jpg'],
-  // Car: Ferrari 458 Italia by vicent091036 (CC-BY 4.0), Draco-compressed, from the three.js examples
-  ['https://raw.githubusercontent.com/mrdoob/three.js/r186/examples/models/gltf/ferrari.glb', 'models/car.glb'],
+  // No car download: the open-wheel car is built in code unless you supply
+  // models/openwheel.glb yourself (see docs/OPENWHEEL_MODEL.md).
 ];
 
 const force = process.argv.includes('--force');

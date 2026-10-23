@@ -40,7 +40,8 @@ apex-lan/
 │  └─ src/
 │     ├─ index.ts
 │     ├─ constants.ts        # TICK_RATE, SNAPSHOT_RATE, MAX_PLAYERS, INTERP_DELAY_MS ...
-│     ├─ tuning.ts           # ALL tuning: CAR, CAMERA, INPUT, graphics, RACE, DRIVETRAIN, FX, AUDIO, HUD
+│     ├─ tuning.ts           # ALL tuning: CAR (incl. aero, ers, tyres), CAMERA, INPUT, graphics, LIVERY, RACE, DRIVETRAIN, FX, AUDIO, HUD
+│     ├─ livery.ts           # Livery type (3 colours + number), fictional presets, sanitizeLivery (+ test)
 │     ├─ input.ts            # CarInput (what clients send each tick)
 │     ├─ protocol/
 │     │  ├─ messages.ts      # discriminated-union message types (C2S / S2C)
@@ -48,6 +49,9 @@ apex-lan/
 │     ├─ physics/
 │     │  ├─ rapier.ts        # single place that imports & inits rapier3d-compat
 │     │  ├─ vehicle.ts       # createVehicle / stepVehicle / resetVehicle / readWheelStates
+│     │  ├─ aero.ts          # active aero: corner/straight wing state machine, drag/downforce by mode (+ test)
+│     │  ├─ ers.ts           # battery: harvest, boost deploy, per-lap budget, overtake unlock (+ test)
+│     │  ├─ tyres.ts         # compounds, wear from distance × load, grip vs wear (+ test)
 │     │  ├─ drivetrain.ts    # sound/HUD gearbox: gear + rpm from speed and throttle (+ test)
 │     │  ├─ vehicleFx.ts     # read-only: per-tyre slip, chassis contacts (impacts/scrapes) (+ test)
 │     │  ├─ handlingMetrics.ts # headless scenarios → numbers (tests + `npm run handling`)
@@ -57,7 +61,8 @@ apex-lan/
 │     │  ├─ testGround.ts    # phase 1 playground (used by vehicle tests)
 │     │  ├─ spline.ts        # centripetal Catmull-Rom, even arc-length samples (pos, tangent, normal, curvature)
 │     │  ├─ track.ts         # TrackDef → BuiltTrack: road/curb/line/barrier mesh data, barrier segments, spawn grid
-│     │  ├─ tracks.ts        # concrete track definitions (APEX_PARK)
+│     │  ├─ tracks.ts        # concrete track definitions (APEX_PARK, with aero zones + detection point)
+│     │  ├─ zones.ts         # inZone(), distanceFromStart()
 │     │  └─ validate.ts      # min corner radius / self-separation checks (used by tests)
 │     ├─ race/
 │     │  ├─ checkpoints.ts   # gates every ~100 m, crossesGate(), respawnPose(), nearestSample()
@@ -110,15 +115,16 @@ apex-lan/
       │  ├─ quality.ts       # QualityManager: Low/Medium/High, persisted, FPS auto-pick
       │  ├─ textures.ts      # PBR texture sets with procedural fallbacks
       │  ├─ carView.ts       # CarModel contract + CarView (places wheels from sim, brake lights)
-      │  ├─ gltfCarModel.ts  # GLB (Draco) → CarModel, auto-fitted to the physics car
-      │  ├─ boxCarModel.ts   # placeholder CarModel (fallback)
+      │  ├─ gltfCarModel.ts  # openwheel.glb → CarModel: auto-fit, wheel/wing nodes, materials by name, livery UVs
+      │  ├─ openWheelCarModel.ts # procedural open-wheel car (fallback + reference for the GLB contract)
+      │  ├─ liveryTexture.ts # livery canvas painter + top-down UV projection
       │  ├─ trackView.ts     # meshes from shared track mesh data + materials
       │  ├─ scenery.ts       # instanced trees, tyre walls, billboards, grandstand, gantry
       │  ├─ cameraRig.ts     # chase (lag, speed-based FOV) + hood cameras
       │  └─ effects/         # skidMarks (ring-buffer mesh), smoke (point sprites), sparks (HDR streaks), effects (glue)
       ├─ audio/
       │  ├─ audioSystem.ts   # AudioContext, buses + limiter, unlock, listener, one-shots, optional files
-      │  ├─ synth.ts         # procedural placeholder sounds (V8 pulses, screech, scrape, thuds, pops)
+      │  ├─ synth.ts         # procedural placeholder sounds (V6 pulses, shift clack, screech, scrape, thuds, pops)
       │  └─ carVoice.ts      # one car's engine/screech/scrape/wind loops (positional for remote cars)
       ├─ types/n8ao.d.ts     # n8ao ships no types
       └─ ui/                 # HTML/CSS overlay: HUD (speedometer, minimap), pause menu, FPS counter, loading, lobby, countdown, race HUD, results, name tags
@@ -157,10 +163,14 @@ it into the server build for prod.
 
 ### 3.3 Messages (`shared/protocol/messages.ts`)
 ```
-C2S: hello{sessionId,name,color} · profile{name,color} · state{s: CarState} · start · endRace · ping
+C2S: hello{sessionId,name,color,livery?,tyre?} · profile{name,color,livery?,tyre?} · state{s: CarState}
+     · start · setLaps · setTyreWear{wear} · endRace · ping
 S2C: welcome{playerId,sessionId,hostId,players,race,resume} · roster{hostId,players}
-     · race{phase,raceId,startsAt} · snapshot{cars: (CarState & {id, ts})[]} · pong · full
-CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking) } — rounded
+     · race{phase,raceId,startsAt,laps,finishDeadline,tyreWear} · snapshot{cars: (CarState & {id, ts})[]}
+     · standings · lap · detect{id,gap,overtake} · pong · full
+PlayerInfo = { id, name, color, slot, connected, livery{primary,secondary,accent,number}, tyre }
+CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking),
+             a? (wing opening 0..1), e? (battery 0..1), d? (deploying) } — rounded
 ```
 
 ### 3.4 Remote cars (`client/src/game/remoteCars.ts`)
@@ -259,7 +269,8 @@ CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking) } �
   `stepVehicle` negates it. Wheel rotation is positive when rolling forward.
 
 ### 4.3 Vehicle (shared/physics/vehicle.ts)
-- **Chassis:** dynamic rigid body + cuboid collider (1.8 × 0.6 × 4.3 m), 1200 kg, explicit
+- **Chassis:** open-wheel car: dynamic rigid body + cuboid collider (2.0 × 0.5 × 5.2 m; the
+  width includes the exposed wheels so cars can't interpenetrate wheel-to-wheel), 800 kg, explicit
   mass properties (`ColliderDesc.setMassProperties`) with a **lowered centre of mass** and
   scaled box inertia. Small angular damping.
 - **Controller:** `world.createVehicleController(chassis)`; four `addWheel(connectionCs,
@@ -271,8 +282,8 @@ CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking) } �
   speed, braking distance, cornering g, drift angle/recovery and rollover checks; Vitest asserts
   they stay in sane ranges.
 - **Drivetrain (arcade-sim):**
-  - Rear-wheel drive by default; drive force = `min(maxForce, power / speed)` (a constant-power
-    curve, no gearbox yet — a gearbox/RPM model for engine audio comes in phase 7).
+  - Rear-wheel drive; drive force = `min(maxForce + ersLowSpeedForce, (power + ersPower) / speed)`
+    (a constant-power curve; the 8-speed gearbox is for sound/HUD only).
   - Brakes on all wheels, front-biased. Brake pedal reverses when (nearly) stopped.
   - Handbrake: rear brake + rear grip (`sideFrictionStiffness`, `frictionSlip`) drops while
     held, then eases back over `gripRecoveryTime`.
@@ -283,7 +294,28 @@ CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking) } �
   the bicycle-model target (`v·tan(δ)/wheelbase`, capped at the grip limit `μg/v`). It never
   adds yaw. `CAR.assist.yawStability = 0` gives raw physics.
 - **Extra forces** each tick as one-shot impulses (not `addForce`, which persists): drag
-  (`∝ v²`), rolling resistance (`∝ v`), downforce (`∝ v²`).
+  (`∝ v²`), rolling resistance (`∝ v`), downforce (`∝ v²`). Downforce loads the suspension, and
+  Rapier's tyre friction scales with wheel load, so grip rises with speed² (fast corners grip
+  most: ~1.7 g at 70 km/h, ~3.8 g at 250 km/h). The assist's grip limit includes downforce.
+- **Active aero** (`aero.ts`): wings are in *corner* mode (Z: high downforce/drag) or *straight*
+  mode (X: ~40 % downforce, ~60 % drag). Straight mode is only allowed inside the track's
+  `aeroZones` (`TrackDef`, metres from the start line; the client sets `vehicle.inAeroZone`
+  each tick from `RaceController.locate()`), toggled by the aero key or automatically (menu
+  option). Braking, steering hard, slowing below `minOpenSpeed` or leaving the zone snaps the
+  wings shut (`closeTime` 0.12 s vs `openTime` 0.35 s). `aero.blend` animates the rear flap and is
+  sent as `CarState.a`.
+- **ERS** (`ers.ts`): 4 MJ battery. Harvests under braking (up to 300 kW, less when slow) and on
+  lift-off; while Boost is held with throttle it deploys up to 300 kW, fading out between 88 and
+  100 m/s, limited per "ERS lap" (`lapDeployLimit`). Top speed: ~250 km/h wings closed, ~295
+  open, ~330 open + boost. **Overtake mode:** the server's `RaceTracker` times every car across
+  the track's `detectionPoint`; if the car that crossed just before (same crossing count, so
+  lapped cars don't count) was ≤ `RACE.overtakeMaxGap` (1.0 s) ahead, a `detect` message unlocks
+  extra deploy power and lap energy until the next detection crossing, which also restarts
+  the ERS lap. The grant is server-decided; the force itself is client-side like all physics.
+- **Tyres** (`tyres.ts`): soft/medium/hard trade grip (×1.06 / 1.0 / 0.94) for wear rate
+  (×1.8 / 1 / 0.55). Wear grows with distance × (1 + k·g²) of horizontal acceleration; grip fades
+  linearly, then drops past the cliff (70 %). The compound is picked in the lobby (fixed for the
+  race); the host sets wear off / normal / high (`RaceState.tyreWear`).
 - **Order per tick:** `stepVehicle()` (input → steering/drive/brakes → aero → `updateVehicle`
   → assist) for every car, then `world.step()`.
 - **Body roll:** the raycast vehicle produces almost none whatever the centre of mass. Visual
@@ -339,12 +371,14 @@ CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking) } �
 
 ### 5.3 Materials & assets
 All assets are optional with procedural fallbacks; see `docs/ASSETS.md` and `npm run assets`.
-- **Car:** any GLB (Draco OK; the decoder is served locally from `public/draco/`).
+- **Car:** `models/openwheel.glb` (optional; contract in `docs/OPENWHEEL_MODEL.md`), else the
+  procedural open-wheel car in `openWheelCarModel.ts`, which follows the same contract.
   `gltfCarModel.ts` rotates it to +Z, scales it to the physics wheelbase, aligns its wheel
   centroid with the physics wheels at rest, detaches the 4 wheel nodes into centred wrappers,
-  and swaps materials by name: paint → `MeshPhysicalMaterial` (metalness 1, roughness 0.45,
-  clearcoat 1), glass → `MeshPhysicalMaterial` with `transmission` (High) or plain transparency,
-  headlights/brake lights → emissive (brake lights brighten while braking and bloom).
+  finds the hinged wing flaps (`wing_rear_flap`, `wing_front_flap`) and swaps materials by name:
+  `livery` → clear-coat `MeshPhysicalMaterial` with the **livery canvas** (`liveryTexture.ts`,
+  layout in `LIVERY`, UVs projected from above), `accent` → accent colour, glass/visor → glass,
+  rain light → emissive (brightens when braking), `tyre_marking` → compound colour.
 - **Track:** asphalt PBR (albedo/normal GL/roughness), grass PBR (tinted), red/white curbs on
   corners (canvas texture), painted edge lines, chequered start line, concrete barriers with
   a painted top band. Flat layers use `polygonOffset` against z-fighting.
@@ -388,8 +422,9 @@ small (physics ≈ 0.4 ms, render submission ≈ 1.5 ms); GPU time is the limit.
 passes (~2.5 ms), the 2048 shadow map (~3 ms more than 1024 at 1080p) and pixel ratio > 1 were
 the big costs, so Medium dropped them: 1600×900 went from ~70 to ~98 fps uncapped (GPU
 13.4 → 10.0 ms), native 1920×1080 runs ~73 fps (13.4 ms). Cars also use LOD: the cockpit,
-steering wheel, chrome, brake discs… (`CAR_MODEL.detailMeshes`, ~190k of the Ferrari's 360k
-triangles) never cast shadows and are hidden on remote cars beyond 30 m.
+steering wheel, small trim… (`CAR_MODEL.detailMeshes`) never cast shadows and are hidden on
+remote cars beyond 30 m. (Measured with the previous road-car model; re-check with the
+open-wheel GLB once it exists.)
 
 ### 5.7 Effects (`client/src/render/effects/`)
 - Input comes from read-only helpers in `/shared` (`vehicleFx.ts`): per-tyre **slip** (sideways
@@ -408,11 +443,12 @@ triangles) never cast shadows and are hidden on remote cars beyond 30 m.
 ### 5.8 Audio (`client/src/audio/`)
 - One `AudioContext`, mixer: engine / effects / ui buses → master → limiter. Unlocked on the
   first key or click (browser autoplay rules), suspended while the tab is hidden.
-- **Placeholder sounds are generated in code** at startup (`synth.ts`): a V8 loop built from
+- **Placeholder sounds are generated in code** at startup (`synth.ts`): a V6 loop built from
   individual exhaust pulses (so `playbackRate = rpm / baseRpm` behaves like a real engine), a
-  resonant tyre screech, metal scrape, wind noise, impact thuds and exhaust pops. Optional
+  resonant tyre screech, metal scrape, wind noise, impact thuds, exhaust pops and a paddle-shift
+  clack (every gear change, plus a blip crackle on downshifts; positional for remote cars). Optional
   recordings in `client/public/sounds/` replace them (`AUDIO.files`).
-- **Gearbox for sound/HUD only** (`drivetrain.ts`): 6 speeds, throttle-dependent upshifts,
+- **Gearbox for sound/HUD only** (`drivetrain.ts`): 8 speeds to 12 000 rpm, throttle-dependent upshifts,
   braking downshifts, launch clutch slip, rev limiter, a short throttle cut on shifts.
   Handling still uses the constant-power engine model.
 - `CarVoice` per car: engine (pitch, low-pass and gain from rpm and load), screech (slip, not
@@ -422,6 +458,11 @@ triangles) never cast shadows and are hidden on remote cars beyond 30 m.
 ### 5.9 HUD & pause menu (`client/src/ui/`)
 - HUD: canvas rev dial + digital km/h + gear (bottom right), north-up minimap with every car
   (bottom left, redrawn at 30 Hz from a pre-drawn track layer), current key bindings as hints.
+  Power panel above the dial (`powerHud.ts`): battery % with deploy/charge state and the lap
+  budget, CORNER/STRAIGHT wing badge (+ "STRAIGHT ZONE" prompt), tyre compound + tread left, and a
+  pulsing **OVERTAKE AVAILABLE** banner with the gap.
+- Lobby: name, grid colour (= livery preset), livery editor (primary/secondary/accent + number),
+  tyre compound, and for the host laps + tyre wear.
 - Pause menu (Esc / ☰ / gamepad Start): Audio (4 volumes, mute), Graphics (presets, FPS
   counter with CPU/GPU breakdown), Controls (rebind every driving action, two keys each),
   Camera. Multiplayer can't pause: the car gets neutral input while it's open. Settings live in
@@ -444,7 +485,8 @@ Each phase ends with a **playable/demoable** state and explicit exit criteria.
 | **6** | **Visual realism** (mostly done) — HDRI IBL, glTF cars with paint/clearcoat, shadows, post FX, PBR road, scenery, skid marks/smoke/sparks ✅, quality presets, car LOD. Left: visual body roll, real tree models | Looks "realistic-ish"; ≥60 fps on host laptop at Medium ✅ |
 | **7** | **Audio & polish** ✅ — engine (rpm-pitched, gearbox), tyre screech, scrape, wind, impacts, countdown beeps, speedometer/gear/minimap HUD, pause menu (volumes, quality, key bindings, camera) | Feels like a game |
 | **8** | **Foundations & robustness** — binary codec, snapshot quantization, reconnect, tab-hidden handling, perf profiling, 2nd track, plus the refactors in `OPEN_WHEEL_PLAN.md` §1 | 8 players stable for a full race; bandwidth per client < 50 KB/s |
-| **9–14** | **Open-wheel upgrade** — car + Active Aero/ERS, real-track pipeline, profiles (SQLite), championship, broadcast presentation, open-source readiness | See [`OPEN_WHEEL_PLAN.md`](OPEN_WHEEL_PLAN.md) |
+| **9** | **Open-wheel car** (mostly done 2026-10-23) — 800 kg car, downforce ∝ v², active aero, ERS + overtake, livery, tyres, paddle shifts, HUD. Left: the GLB itself, R2 car-spec registry | `npm run handling` in range; wings animate on remote cars |
+| **10–14** | **Open-wheel upgrade** — car + Active Aero/ERS, real-track pipeline, profiles (SQLite), championship, broadcast presentation, open-source readiness | See [`OPEN_WHEEL_PLAN.md`](OPEN_WHEEL_PLAN.md) |
 
 ---
 
