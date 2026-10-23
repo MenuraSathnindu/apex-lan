@@ -53,6 +53,9 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       [WS_PATH]: { target: `ws://localhost:${SERVER_PORT}`, ws: true },
+      // Profiles API and photos live on the game server.
+      '/api': { target: `http://localhost:${SERVER_PORT}` },
+      '/photos': { target: `http://localhost:${SERVER_PORT}` },
     },
   },
   build: {

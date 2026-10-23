@@ -1,9 +1,12 @@
+import { mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DEV_CLIENT_PORT, SERVER_PORT, SNAPSHOT_RATE, WS_PATH, decodeC2S, encode } from '@apex/shared';
+import { PlayerDb } from './db/database.ts';
 import { Room, type Connection } from './game/room.ts';
+import { createApi } from './http/api.ts';
 import { trackCatalog } from './tracks/catalog.ts';
 import { createStaticHandler } from './net/staticFiles.ts';
 import { lanAddresses } from './util/lanAddress.ts';
@@ -17,8 +20,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 const clientDist = resolve(here, '../../client/dist');
 // Generated tracks (committed, so always present in the repo).
 const tracksDir = resolve(here, '../../client/public/tracks');
+// Player profiles, stats and photos (git-ignored). APEX_DATA_DIR moves them elsewhere.
+const dataDir = process.env.APEX_DATA_DIR ? resolve(process.env.APEX_DATA_DIR) : resolve(here, '../data');
+mkdirSync(join(dataDir, 'photos'), { recursive: true });
+const db = new PlayerDb(join(dataDir, 'apex.sqlite'));
 
-const http = createServer(createStaticHandler(clientDist));
+const serveStatic = createStaticHandler(clientDist);
+const api = createApi({ db, photosDir: join(dataDir, 'photos') });
+const http = createServer((req, res) => {
+  void api.handle(req, res).then((handled) => handled || serveStatic(req, res));
+});
 const wss = new WebSocketServer({ server: http, path: WS_PATH, maxPayload: 64 * 1024 });
 const room = new Room({ log: (m) => console.log(`[room] ${m}`), tracks: trackCatalog(tracksDir, (m) => console.log(`[tracks] ${m}`)) });
 
