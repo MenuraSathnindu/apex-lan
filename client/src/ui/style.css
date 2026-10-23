@@ -2198,3 +2198,51 @@ body {
   color: #ffb347;
   font-size: 11px;
 }
+
+.rh-pit {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: rgba(20, 90, 200, 0.85);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.rh-pit[hidden] {
+  display: none;
+}
+
+.rh-pit small {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.rh-pit.stopping {
+  min-width: 220px;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.rh-pit-tyre {
+  margin: 6px 0;
+  font-size: 22px;
+}
+
+.rh-pit-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.rh-pit-bar i {
+  display: block;
+  height: 100%;
+  background: #4ade80;
+}

@@ -1,4 +1,5 @@
-import { CAR_COLORS } from '@apex/shared';
+import { CAR, CAR_COLORS, type PitZone } from '@apex/shared';
+import type { PitStop } from '../game/pitStop.ts';
 import type { RaceController } from '../game/raceController.ts';
 import { avatarHtml } from './avatar.ts';
 import type { Session } from '../game/session.ts';
@@ -25,7 +26,7 @@ const RESPAWN_TEXT = {
 };
 
 /** In-race HUD: lap/position/timing panel, live ranking, wrong-way banner, toasts. */
-export function createRaceHud(root: HTMLElement, session: Session, clock: ServerClock, race: RaceController) {
+export function createRaceHud(root: HTMLElement, session: Session, clock: ServerClock, race: RaceController, pit: { zone: PitZone; stop: PitStop }) {
   root.innerHTML = `
     <div class="rh-session" hidden></div>
     <div class="rh-panel">
@@ -37,6 +38,7 @@ export function createRaceHud(root: HTMLElement, session: Session, clock: Server
     </div>
     <ol class="rh-ranking"></ol>
     <div class="rh-wrongway">WRONG WAY</div>
+    <div class="rh-pit" hidden></div>
     <div class="rh-banner"></div>
     <div class="rh-toasts"></div>`;
   const $ = (s: string) => root.querySelector<HTMLElement>(s)!;
@@ -51,6 +53,8 @@ export function createRaceHud(root: HTMLElement, session: Session, clock: Server
   const wrongEl = $('.rh-wrongway');
   const bannerEl = $('.rh-banner');
   const toastEl = $('.rh-toasts');
+  const pitEl = $('.rh-pit');
+  let pitKey = '';
   let rankKey = '';
   let lastRespawnShown = 0;
 
@@ -117,6 +121,19 @@ export function createRaceHud(root: HTMLElement, session: Session, clock: Server
               <span class="rk-status">${status}</span></li>`;
           })
           .join('');
+      }
+
+      // Pit lane: limiter tag, and the tyre choice during a stop.
+      const stop = pit.stop;
+      const pk = stop.holding ? `stop:${stop.choice}:${Math.round(stop.progress * 20)}` : pit.zone !== 'none' && phase === 'racing' ? 'limiter' : '';
+      if (pk !== pitKey) {
+        pitKey = pk;
+        pitEl.hidden = !pk;
+        pitEl.classList.toggle('stopping', stop.holding);
+        if (stop.holding) {
+          const c = CAR.tyres.compounds[stop.choice];
+          pitEl.innerHTML = `PIT STOP<div class="rh-pit-tyre">◀ <b style="color:${hex(c.color)}">${c.label}</b> ▶</div><div class="rh-pit-bar"><i style="width:${Math.round(stop.progress * 100)}%"></i></div>`;
+        } else pitEl.innerHTML = 'PIT LIMITER <small>80 km/h</small>';
       }
 
       wrongEl.classList.toggle('show', race.wrongWay && phase === 'racing' && !me?.finishTime);

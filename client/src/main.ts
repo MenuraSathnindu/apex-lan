@@ -18,6 +18,8 @@ import {
   initRapier,
   fitTyres,
   lapBudgetLeft,
+  nearestSample,
+  pitZoneAt,
   newErsLap,
   packCarState,
   parseTrackFile,
@@ -34,6 +36,7 @@ import {
   type Compound,
   type S2C,
   type TrackIndexEntry,
+  type PitZone,
   type WheelState,
 } from '@apex/shared';
 import { AudioSystem } from './audio/audioSystem.ts';
@@ -45,6 +48,7 @@ import { RaceController } from './game/raceController.ts';
 import { RemoteCars } from './game/remoteCars.ts';
 import { AccountClient } from './game/accountClient.ts';
 import { Spectator } from './game/spectator.ts';
+import { PitStop } from './game/pitStop.ts';
 import { Session } from './game/session.ts';
 import { SettingsStore } from './game/userSettings.ts';
 import { createInputController } from './input/inputController.ts';
@@ -308,7 +312,9 @@ const gridPose = () => {
 const spectating = () => session.joined && session.me?.entrant === false && session.race.phase !== 'lobby';
 const spectator = new Spectator();
 const raceController = new RaceController(track, buildCheckpoints(track), car, session, gridPose);
-const raceHud = createRaceHud($('#racehud'), session, clock, raceController);
+/** Pit lane state of our car (zone this tick, and the stop under way). */
+const pit = { zone: 'none' as PitZone, stop: new PitStop(), hint: -1 };
+const raceHud = createRaceHud($('#racehud'), session, clock, raceController, pit);
 const results = createResults(
   $('#results'),
   session,
@@ -437,6 +443,20 @@ startLoop({
     const racing = phase === 'racing' || (phase === 'countdown' && clock.now() >= startsAt);
     const sampled = input.sample();
     lastInput = racing || phase === 'results' ? sampled : HOLD;
+    // Pit lane: limiter while in the lane; a stop in the box holds the car while tyres go on.
+    if (!spectating()) {
+      const p = car.body.translation();
+      pit.hint = nearestSample(track, p.x, p.z, pit.hint);
+      pit.zone = pitZoneAt(track, pit.hint, p.x, p.z);
+      car.speedLimit = pit.zone === 'none' ? Infinity : CAR.pit.speedLimit;
+      const fitted = pit.stop.step(pit.zone, vehicleSpeed(car), phase === 'racing', sampled.steer, car.tyres.compound, FIXED_DT);
+      if (fitted) {
+        fitTyres(car.tyres, car.spec, fitted, session.race.tyreWear);
+        carView.setTyreColor(CAR.tyres.compounds[fitted].color);
+        socket.send({ t: 'pitStop', tyre: fitted });
+      }
+      if (pit.stop.holding) lastInput = HOLD;
+    }
     if (racing && lastInput.reset) {
       // During a race, R puts you back at the last checkpoint instead of resetting in place.
       raceController.respawn('manual');
@@ -468,7 +488,7 @@ startLoop({
 
     if (session.joined && !watching && ++tick % SEND_EVERY === 0) {
       const braking = (lastInput.brake > 0 && vehicleSpeed(car) > 0.5) || lastInput.handbrake;
-      socket.send({ t: 'state', s: packCarState(car, braking) });
+      socket.send({ t: 'state', s: packCarState(car, braking, pit.zone !== 'none') });
     }
     profiler.endStep();
   },
