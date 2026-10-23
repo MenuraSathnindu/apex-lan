@@ -90,20 +90,20 @@ describe('handling stays in sane ranges', () => {
   });
 
   it('suspension sag is realistic', () => {
-    expect(r.restSagCm).toBeGreaterThan(3);
-    expect(r.restSagCm).toBeLessThan(15);
+    expect(r.restSagCm).toBeGreaterThan(0.8);
+    expect(r.restSagCm).toBeLessThan(6);
   });
-  it('accelerates like a sporty car', () => {
-    expect(r.zeroTo100s).toBeGreaterThan(3);
-    expect(r.zeroTo100s).toBeLessThan(8);
+  it('accelerates like an open-wheel car', () => {
+    expect(r.zeroTo100s).toBeGreaterThan(2);
+    expect(r.zeroTo100s).toBeLessThan(3.5);
   });
   it('has a sensible top speed', () => {
-    expect(r.topSpeedKmh).toBeGreaterThan(160);
-    expect(r.topSpeedKmh).toBeLessThan(320);
+    expect(r.topSpeedKmh).toBeGreaterThan(230);
+    expect(r.topSpeedKmh).toBeLessThan(360);
   });
-  it('brakes 100-0 in under 50 m', () => expect(r.brake100to0m).toBeLessThan(50));
+  it('brakes 100-0 in under 25 m', () => expect(r.brake100to0m).toBeLessThan(25));
   it('is grippy without the handbrake', () => {
-    expect(r.cornerLateralG).toBeGreaterThan(0.9);
+    expect(r.cornerLateralG).toBeGreaterThan(1.5);
     expect(r.noHandbrakeSlipDeg).toBeLessThan(8);
   });
   it('does not roll over in hard cornering', () => {

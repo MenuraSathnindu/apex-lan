@@ -27,7 +27,7 @@ describe('drivetrain (sound/HUD gearbox)', () => {
     const s = createDrivetrain();
     let maxRpm = 0;
     const gears = new Set<number>();
-    for (let v = 0; v <= 64; v += 0.05) {
+    for (let v = 0; v <= 95; v += 0.05) {
       stepDrivetrain(s, v, 1, false, FIXED_DT);
       maxRpm = Math.max(maxRpm, s.rpm);
       gears.add(s.gear);
@@ -36,13 +36,13 @@ describe('drivetrain (sound/HUD gearbox)', () => {
     expect([...gears].filter((g) => g > 0).length).toBe(DRIVETRAIN.ratios.length);
     expect(maxRpm).toBeLessThanOrEqual(DRIVETRAIN.limiterRpm);
     // Top gear at top speed sits below the redline.
-    expect(wheelRpm(64, DRIVETRAIN.ratios.length)).toBeLessThan(DRIVETRAIN.redlineRpm);
+    expect(wheelRpm(92, DRIVETRAIN.ratios.length)).toBeLessThan(DRIVETRAIN.redlineRpm);
   });
 
   it('cruising shifts earlier than flat out', () => {
     const lazy = createDrivetrain();
     const flat = createDrivetrain();
-    for (let v = 0; v <= 20; v += 0.05) {
+    for (let v = 0; v <= 30; v += 0.05) {
       stepDrivetrain(lazy, v, 0.2, false, FIXED_DT);
       stepDrivetrain(flat, v, 1, false, FIXED_DT);
     }
@@ -51,10 +51,10 @@ describe('drivetrain (sound/HUD gearbox)', () => {
 
   it('shifts down when slowing and cuts load during a shift', () => {
     const s = createDrivetrain();
-    for (let v = 0; v <= 50; v += 0.05) stepDrivetrain(s, v, 1, false, FIXED_DT);
+    for (let v = 0; v <= 80; v += 0.05) stepDrivetrain(s, v, 1, false, FIXED_DT);
     const high = s.gear;
     let sawCut = false;
-    for (let v = 50; v >= 8; v -= 0.1) {
+    for (let v = 80; v >= 12; v -= 0.1) {
       stepDrivetrain(s, v, 0, true, FIXED_DT);
       if (s.shifted) sawCut = true;
     }

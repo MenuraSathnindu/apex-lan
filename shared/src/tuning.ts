@@ -25,97 +25,94 @@ export interface Vec3Like {
 export const CAR = {
   chassis: {
     /**
-     * Half-size of the chassis collision box. Full size ≈ 1.9 × 0.6 × 4.5 m
-     * (matches the Ferrari 458 model's footprint).
+     * Half-size of the chassis collision box. Full size ≈ 2.0 × 0.5 × 5.2 m: the width includes
+     * the exposed wheels, so cars cannot interpenetrate wheel-to-wheel.
      */
-    halfExtents: { x: 0.95, y: 0.3, z: 2.25 },
-    mass: 1200,
+    halfExtents: { x: 1.0, y: 0.25, z: 2.6 },
+    /** Minimum mass with driver (kg). */
+    mass: 800,
     /**
-     * Centre of mass relative to the chassis box centre. Lower = harder to flip;
-     * z behind the axle midpoint = mid-engine weight balance (~42/58 front/rear).
-     * Note: Rapier's raycast vehicle produces almost no body roll whatever this is;
-     * visible roll will be faked in the renderer later.
+     * Centre of mass relative to the chassis box centre. Very low = hard to flip; z behind the
+     * midpoint of the axles gives ~46/54 front/rear weight distribution.
      */
-    centerOfMass: { x: 0, y: -0.3, z: -0.3 },
-    /** Moment-of-inertia scale vs. a solid box. >1 = lazier rotation, more stable. */
-    inertiaScale: { x: 1.4, y: 1.0, z: 1.4 },
+    centerOfMass: { x: 0, y: -0.1, z: -0.3 },
+    /** Moment-of-inertia scale vs. a solid box. <1 = light and twitchy, >1 = lazy. */
+    inertiaScale: { x: 1.2, y: 0.8, z: 1.2 },
     linearDamping: 0,
-    angularDamping: 0.4,
+    angularDamping: 0.3,
   },
 
   wheels: {
-    /** Matches the car model's tyres; the model is scaled to fit the wheelbase below. */
-    radius: 0.35,
+    /** Tyre radius (m). The model's wheels are scaled to match. */
+    radius: 0.36,
     /** Wheel half-width (placeholder visuals only). */
-    halfWidth: 0.13,
-    /**
-     * Connection points (chassis space). Order everywhere: FL, FR, RL, RR.
-     * These match the Ferrari model (wheelbase 2.65 m) so its wheels sit in the arches.
-     */
-    halfTrack: 0.83,
-    frontZ: 1.16,
-    rearZ: -1.49,
-    connectionY: -0.1,
-    suspensionRestLength: 0.32,
-    maxSuspensionTravel: 0.2,
-    /** Per unit of chassis mass (Rapier/Bullet convention): sag ≈ 9.81 / (4·k) m. */
-    suspensionStiffness: 32,
-    /** Bump damping. */
-    suspensionCompression: 2.6,
-    /** Rebound damping. Raise if the car bounces after landing. */
-    suspensionRelaxation: 3.8,
+    halfWidth: 0.19,
+    /** Connection points (chassis space). Order everywhere: FL, FR, RL, RR. Wheelbase 3.4 m. */
+    halfTrack: 0.8,
+    frontZ: 1.55,
+    rearZ: -1.85,
+    /** Above the box centre: open-wheel cars sit with the axles higher than the floor. */
+    connectionY: 0.21,
+    suspensionRestLength: 0.2,
+    maxSuspensionTravel: 0.12,
+    /** Per unit of chassis mass (Rapier/Bullet convention): sag ≈ 9.81 / (4·k) m. Stiff: aero loads are high. */
+    suspensionStiffness: 120,
+    /** Bump damping (~0.25 of critical). */
+    suspensionCompression: 5.5,
+    /** Rebound damping (~0.4 of critical). */
+    suspensionRelaxation: 8.8,
     maxSuspensionForce: 100_000,
     /**
-     * Tyre grip limit (combined longitudinal + lateral). Behaves roughly like the
-     * friction coefficient μ: 1.5 ≈ 1.3–1.5 g of cornering. Road tyres ≈ 1.0.
+     * Tyre grip limit (combined longitudinal + lateral), × the compound's grip (see TYRES).
+     * Behaves like μ against the wheel load, which includes downforce, so grip grows with speed².
      */
-    frictionSlip: { front: 1.5, rear: 1.4 },
+    frictionSlip: { front: 1.4, rear: 1.45 },
     /** Lateral grip multiplier. */
     sideFrictionStiffness: { front: 1.0, rear: 1.0 },
   },
 
   engine: {
-    /** Peak drive force at low speed, split across driven wheels. */
-    maxForce: 8000,
-    /** Engine power in watts: force falls off as power / speed. ~180 kW ≈ 240 hp. */
-    power: 180_000,
+    /** Peak drive force at low speed, split across driven wheels (traction-limited well below this). */
+    maxForce: 8800,
+    /** Combustion engine power in watts. ERS deployment adds to this (see ERS). */
+    power: 520_000,
     /** Which wheels are driven. */
     drive: 'rear' as 'rear' | 'front' | 'all',
-    reverseForce: 4000,
-    reverseMaxSpeed: 9,
+    reverseForce: 3000,
+    reverseMaxSpeed: 8,
     /** Below this forward speed (m/s), holding brake engages reverse instead. */
     reverseEngageSpeed: 0.8,
   },
 
   brakes: {
-    /** Brake impulse per wheel per tick at full pedal. */
-    strength: 46,
+    /** Brake impulse per wheel per tick at full pedal. Grip-limited, so this only needs to be high. */
+    strength: 90,
     /** Share of braking on the front axle (0..1). */
-    frontBias: 0.62,
+    frontBias: 0.58,
     /** Small brake applied with no pedal input, so the car coasts down. */
-    engineBraking: 1.2,
+    engineBraking: 1.0,
   },
 
   handbrake: {
     /** Rear-wheel brake impulse while the handbrake is held. */
-    rearBrake: 8,
+    rearBrake: 10,
     /** Rear lateral grip multiplier while held — this is what lets the tail slide. */
     rearSideFrictionStiffness: 0.4,
     /** Rear grip limit while held. */
-    rearFrictionSlip: 0.8,
+    rearFrictionSlip: 0.9,
     /** Seconds for rear grip to come back after releasing (smooth exit from drifts). */
     gripRecoveryTime: 0.35,
   },
 
   steering: {
-    /** Max front-wheel angle when slow. */
-    maxAngle: 0.6,
+    /** Max front-wheel angle when slow: quick, twitchy turn-in. */
+    maxAngle: 0.5,
     /** Max front-wheel angle at highSpeedRef and above. */
-    highSpeedAngle: 0.14,
-    highSpeedRef: 45,
+    highSpeedAngle: 0.05,
+    highSpeedRef: 75,
     /** How fast the wheels turn toward the target / back to centre (rad/s). */
-    turnRate: 3.2,
-    returnRate: 5.5,
+    turnRate: 4.5,
+    returnRate: 7,
   },
 
   /**
@@ -130,12 +127,12 @@ export const CAR = {
   },
 
   aero: {
-    /** Drag force = drag · v². With power 180 kW, top speed ≈ (power/drag)^(1/3). */
-    drag: 0.48,
+    /** Drag force = drag · v². Top speed with 520 kW ≈ (power/drag)^(1/3). */
+    drag: 1.1,
     /** Rolling resistance force = rolling · v. */
-    rolling: 14,
-    /** Downforce = downforce · v² (applied at centre of mass). */
-    downforce: 1.6,
+    rolling: 8,
+    /** Downforce = downforce · v² (applied at centre of mass): ≈ 2.6× the car's weight at 250 km/h. */
+    downforce: 4.3,
   },
 
   /**
@@ -396,32 +393,32 @@ export const RACE = {
 // ---------------------------------------------------------------------------
 
 export const DRIVETRAIN = {
-  idleRpm: 950,
-  redlineRpm: 8500,
+  idleRpm: 4200,
+  redlineRpm: 12_000,
   /** Rev limiter: rpm bounces off this. */
-  limiterRpm: 8700,
-  /** Gear ratios 1st..6th, times finalDrive. Tuned so 6th tops out near CAR's top speed. */
-  ratios: [3.2, 2.2, 1.65, 1.3, 1.07, 0.9],
-  reverseRatio: 3.0,
-  finalDrive: 4.9,
+  limiterRpm: 12_300,
+  /** Gear ratios 1st..8th (geometric steps), times finalDrive. 8th reaches ~340 km/h at the redline. */
+  ratios: [5.0, 4.08, 3.33, 2.72, 2.22, 1.81, 1.48, 1.21],
+  reverseRatio: 4.5,
+  finalDrive: 4.0,
   /** Upshift at this rpm at full throttle; at light throttle it shifts earlier (see below). */
-  upshiftRpm: 7900,
+  upshiftRpm: 11_500,
   /** Upshift rpm at zero throttle (cruising). */
-  lazyUpshiftRpm: 3800,
+  lazyUpshiftRpm: 7000,
   /** Downshift when rpm falls below this (higher while braking, for blips into corners). */
-  downshiftRpm: 3200,
-  brakingDownshiftRpm: 4300,
+  downshiftRpm: 6800,
+  brakingDownshiftRpm: 8800,
   /** Throttle cut during a shift (s). */
-  shiftTime: 0.14,
+  shiftTime: 0.05,
   /** Clutch slip at launch: rpm can't fall below idle + throttle × this while slow. */
-  launchRpm: 3600,
+  launchRpm: 6000,
   /** …fading out by this speed (m/s). */
-  clutchSpeed: 7,
+  clutchSpeed: 12,
   /** How fast rpm follows the target (1/s). */
-  rpmResponse: 14,
+  rpmResponse: 22,
   /** Free-revving rate in neutral (rpm/s up, down). */
-  freeRevUp: 14_000,
-  freeRevDown: 7000,
+  freeRevUp: 40_000,
+  freeRevDown: 18_000,
 };
 
 // ---------------------------------------------------------------------------
@@ -512,7 +509,7 @@ export const AUDIO = {
 
 export const HUD = {
   /** Tachometer scale (rpm) and where the red zone starts. */
-  tachoMaxRpm: 9000,
+  tachoMaxRpm: 13_000,
   /** Minimap size (CSS px) and redraw rate (Hz). */
   minimapSize: 190,
   minimapHz: 30,
