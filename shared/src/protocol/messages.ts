@@ -33,6 +33,8 @@ export interface RaceState {
   finishDeadline: number;
   /** Tyre wear for the race (host picks it in the lobby). */
   tyreWear: TyreWearSetting;
+  /** Track for the next/current race (host picks it in the lobby). */
+  trackId: string;
 }
 
 /** A car's state as reported by its owner. Numbers are rounded to keep messages small. */
@@ -69,6 +71,7 @@ export type C2S =
   | { t: 'start' }
   | { t: 'setLaps'; laps: number }
   | { t: 'setTyreWear'; wear: TyreWearSetting }
+  | { t: 'setTrack'; trackId: string }
   | { t: 'endRace' }
   | { t: 'ping'; clientTime: number };
 

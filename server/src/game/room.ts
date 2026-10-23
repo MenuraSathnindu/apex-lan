@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { builtInTracks, type TrackProvider } from '../tracks/catalog.ts';
 import {
   APEX_PARK,
   CAR_COLORS,
   RACE,
   RaceTracker,
+  type BuiltTrack,
+  type Gate,
   buildCheckpoints,
   buildTrack,
   CONNECTION_TIMEOUT_MS,
@@ -58,7 +61,8 @@ interface Player {
 export interface RoomOptions {
   now?: () => number;
   log?: (msg: string) => void;
-  track?: TrackDef;
+  /** Selectable tracks (default: the built-in ones). */
+  tracks?: TrackProvider;
 }
 
 /**
@@ -70,19 +74,20 @@ export class Room {
   private readonly byConn = new Map<Connection, Player>();
   private nextId = 1;
   private hostId = 0;
-  private race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0, tyreWear: 'normal' };
+  private race: RaceState = { phase: 'lobby', raceId: 0, startsAt: 0, laps: RACE.defaultLaps, finishDeadline: 0, tyreWear: 'normal', trackId: APEX_PARK.id };
   private readonly now: () => number;
   private readonly log: (msg: string) => void;
-  private readonly track;
-  private readonly gates;
+  private readonly tracks: TrackProvider;
+  private track!: BuiltTrack;
+  private gates!: Gate[];
   private tracker: RaceTracker | null = null;
   private updates = 0;
 
   constructor(opts: RoomOptions = {}) {
     this.now = opts.now ?? Date.now;
     this.log = opts.log ?? (() => {});
-    this.track = buildTrack(opts.track ?? APEX_PARK);
-    this.gates = buildCheckpoints(this.track);
+    this.tracks = opts.tracks ?? builtInTracks();
+    this.useTrack(APEX_PARK);
   }
 
   /** Feed every decoded message from a connection here (including before `hello`). */
@@ -121,6 +126,15 @@ export class Room {
         const laps = Math.round(Number(msg.laps));
         if (!Number.isFinite(laps)) return;
         this.race = { ...this.race, laps: Math.max(RACE.minLaps, Math.min(RACE.maxLaps, laps)) };
+        this.broadcast({ t: 'race', race: this.race });
+        break;
+      }
+      case 'setTrack': {
+        if (player.id !== this.hostId || this.race.phase !== 'lobby' || typeof msg.trackId !== 'string') return;
+        const def = this.tracks.get(msg.trackId);
+        if (!def || def.id === this.race.trackId) return;
+        this.useTrack(def);
+        this.log(`track: ${def.name}, ${def.country}`);
         this.broadcast({ t: 'race', race: this.race });
         break;
       }
@@ -341,6 +355,13 @@ export class Room {
       this.race = { ...this.race, finishDeadline: this.now() + RACE.finishGraceMs };
       this.broadcast({ t: 'race', race: this.race });
     }
+  }
+
+  /** Switches the room to a track (lobby only): laps reset to the track's default. */
+  private useTrack(def: TrackDef) {
+    this.track = buildTrack(def);
+    this.gates = buildCheckpoints(this.track);
+    this.race = { ...this.race, trackId: def.id, laps: Math.max(RACE.minLaps, Math.min(RACE.maxLaps, def.laps)) };
   }
 
   private connectedPlayers(): Player[] {

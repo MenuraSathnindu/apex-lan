@@ -86,7 +86,8 @@ class RemoteCar {
     if ((this.surfaceTimer -= dt) <= 0) {
       this.surfaceTimer = 0.2;
       const hit = world.castRay(new RAPIER.Ray({ x: this.pos.x, y: this.pos.y + 0.5, z: this.pos.z }, DOWN), 3, true, undefined, WHEEL_RAY_GROUPS);
-      this.onGrass = !!hit && surfaceOf(world, hit.collider) === 'grass';
+      const surface = hit ? surfaceOf(world, hit.collider) : 'asphalt';
+      this.onGrass = surface === 'grass' || surface === 'gravel';
     }
   }
 

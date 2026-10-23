@@ -13,7 +13,8 @@ export interface MinimapCar {
  * North-up track map. The track outline is drawn once into an offscreen canvas; each update
  * (HUD.minimapHz) copies it and draws every car on top: remote cars as dots, yours as an arrow.
  */
-export function createMinimap(root: HTMLElement, track: BuiltTrack) {
+export function createMinimap(root: HTMLElement, initial: BuiltTrack) {
+  let track = initial;
   const canvas = document.createElement('canvas');
   canvas.className = 'minimap-canvas';
   root.append(canvas);
@@ -29,9 +30,13 @@ export function createMinimap(root: HTMLElement, track: BuiltTrack) {
   let maxX = -Infinity;
   let minZ = Infinity;
   let maxZ = -Infinity;
-  for (const s of track.samples) {
-    [minX, maxX, minZ, maxZ] = [Math.min(minX, s.x), Math.max(maxX, s.x), Math.min(minZ, s.z), Math.max(maxZ, s.z)];
-  }
+  const measure = () => {
+    [minX, maxX, minZ, maxZ] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const s of track.samples) {
+      [minX, maxX, minZ, maxZ] = [Math.min(minX, s.x), Math.max(maxX, s.x), Math.min(minZ, s.z), Math.max(maxZ, s.z)];
+    }
+  };
+  measure();
 
   const toMap = (x: number, z: number): [number, number] => [(x - ox) * scale, (z - oz) * scale];
 
@@ -56,7 +61,8 @@ export function createMinimap(root: HTMLElement, track: BuiltTrack) {
       else path.lineTo(x, y);
     });
     path.closePath();
-    const roadPx = Math.max(4 * dpr, track.def.roadWidth * scale);
+    const avgWidth = track.samples.reduce((a, s) => a + s.wl + s.wr, 0) / track.samples.length;
+    const roadPx = Math.max(4 * dpr, avgWidth * scale);
     b.strokeStyle = 'rgba(255,255,255,0.85)';
     b.lineWidth = roadPx + 3 * dpr;
     b.stroke(path);
@@ -65,9 +71,8 @@ export function createMinimap(root: HTMLElement, track: BuiltTrack) {
     b.stroke(path);
     // Start/finish line across the road.
     const s = track.samples[track.startIndex]!;
-    const half = track.def.roadWidth / 2 + 2;
-    const [ax, ay] = toMap(s.x + s.nx * half, s.z + s.nz * half);
-    const [bx, by] = toMap(s.x - s.nx * half, s.z - s.nz * half);
+    const [ax, ay] = toMap(s.x + s.nx * (s.wl + 2), s.z + s.nz * (s.wl + 2));
+    const [bx, by] = toMap(s.x - s.nx * (s.wr + 2), s.z - s.nz * (s.wr + 2));
     b.strokeStyle = '#fff';
     b.lineWidth = 2.5 * dpr;
     b.beginPath();
@@ -80,6 +85,13 @@ export function createMinimap(root: HTMLElement, track: BuiltTrack) {
   build();
 
   return {
+    /** Redraws the outline for another track. */
+    setTrack(next: BuiltTrack) {
+      track = next;
+      measure();
+      build();
+    },
+
     /**
      * @param me your car: position, heading (yaw, 0 = +Z) and colour index
      * @param others visible remote cars

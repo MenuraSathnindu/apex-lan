@@ -58,7 +58,7 @@ export class LocalCarFx {
 
     readWheelSlip(car, input, this.slips);
     let slip = 0;
-    for (const w of this.slips) if (w.inContact && w.surface !== 'grass') slip = Math.max(slip, w.slip);
+    for (const w of this.slips) if (w.inContact && w.surface !== 'grass' && w.surface !== 'gravel') slip = Math.max(slip, w.slip);
     this.screechSlip = slip;
 
     this.cooldown -= dt;

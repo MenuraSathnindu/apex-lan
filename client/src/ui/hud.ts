@@ -46,6 +46,10 @@ export function createHud(root: HTMLElement, track: BuiltTrack) {
       power.setKeys(first('aero'), first('boost'));
     },
 
+    setTrack(track: BuiltTrack) {
+      minimap.setTrack(track);
+    },
+
     update(f: HudFrame) {
       speedo.update(f.speedMs, f.rpm, f.gear);
       power.update(f.power);

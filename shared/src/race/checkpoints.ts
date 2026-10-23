@@ -1,5 +1,5 @@
 import type { SpawnPose } from '../physics/vehicle.ts';
-import type { BuiltTrack } from '../track/track.ts';
+import { boundaryAt, type BuiltTrack } from '../track/track.ts';
 import { RACE } from '../tuning.ts';
 
 /** An invisible line across the track that must be crossed in order. */
@@ -22,28 +22,26 @@ export interface Gate {
 
 /** A gate across the track `distance` metres past the start line (wraps), e.g. the overtake detection point. */
 export function gateAtDistance(track: BuiltTrack, distance: number, index = -1): Gate {
-  const { samples, startIndex, def } = track;
+  const { samples, startIndex } = track;
   const n = samples.length;
   const step = samples[1]!.s;
   const d = ((distance % track.length) + track.length) % track.length;
-  const smp = samples[(startIndex + Math.round(d / step)) % n]!;
-  const halfWidth = def.roadWidth / 2 + def.curbWidth + def.runoff + def.barrierThickness;
+  const i = (startIndex + Math.round(d / step)) % n;
+  const smp = samples[i]!;
+  // Covers road, kerbs and run-off up to the barrier (+1 m).
+  const halfWidth = boundaryAt(track, i) + 1;
   return { index, x: smp.x, z: smp.z, tx: smp.tx, tz: smp.tz, nx: smp.nx, nz: smp.nz, halfWidth, s: d };
 }
 
-/** Gates every ~`spacing` m, gate 0 on the start/finish line. */
+/**
+ * Checkpoint gates, gate 0 on the start/finish line: the track's own list (generated tracks),
+ * or one every ~`spacing` m.
+ */
 export function buildCheckpoints(track: BuiltTrack, spacing: number = RACE.checkpointSpacing): Gate[] {
-  const { samples, startIndex, def } = track;
-  const n = samples.length;
-  const step = samples[1]!.s;
+  const own = track.def.checkpoints;
+  if (own && own.length >= 3) return own.map((s, g) => gateAtDistance(track, s, g));
   const count = Math.max(3, Math.round(track.length / spacing));
-  const halfWidth = def.roadWidth / 2 + def.curbWidth + def.runoff + def.barrierThickness;
-  const gates: Gate[] = [];
-  for (let g = 0; g < count; g++) {
-    const smp = samples[(startIndex + Math.round((g * track.length) / count / step)) % n]!;
-    gates.push({ index: g, x: smp.x, z: smp.z, tx: smp.tx, tz: smp.tz, nx: smp.nx, nz: smp.nz, halfWidth, s: (g * track.length) / count });
-  }
-  return gates;
+  return Array.from({ length: count }, (_, g) => gateAtDistance(track, (g * track.length) / count, g));
 }
 
 /** True if moving from A to B crosses the gate in the driving direction. */

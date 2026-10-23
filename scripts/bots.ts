@@ -4,6 +4,8 @@
 //   npm run bots              → 3 bots against ws://localhost:3000/ws
 //   npm run bots -- 7         → 7 bots (fills an 8-player room with you)
 //   npm run bots -- 7 ws://192.168.1.23:3000/ws
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import {
   APEX_PARK,
@@ -17,20 +19,32 @@ import {
   type C2S,
   type CarState,
   type RacePhase,
+  type BuiltTrack,
   type TrackSample,
 } from '../shared/src/index.ts';
+import { trackCatalog } from '../server/src/tracks/catalog.ts';
 
 const count = Number(process.argv[2] ?? 3);
 const url = process.argv[3] ?? 'ws://localhost:3000/ws';
-const track = buildTrack(APEX_PARK);
-const { samples } = track;
-const step = samples[1]!.s;
+// Bots follow whichever track the room is on (same files the server reads).
+const catalog = trackCatalog(resolve(dirname(fileURLToPath(import.meta.url)), '../client/public/tracks'));
+const built = new Map<string, BuiltTrack>();
+function trackFor(id: string): BuiltTrack {
+  let t = built.get(id);
+  if (!t) {
+    t = buildTrack(catalog.get(id) ?? APEX_PARK);
+    built.set(id, t);
+  }
+  return t;
+}
 const wheelbase = CAR.wheels.frontZ - CAR.wheels.rearZ;
 // Wheel centre height in chassis space at rest, and the chassis height that puts the tyres on the road.
 const wheelY = CAR.wheels.connectionY - (CAR.wheels.suspensionRestLength - 9.81 / (4 * CAR.wheels.suspensionStiffness));
 const chassisY = TRACK_HEIGHTS.road + CAR.wheels.radius - wheelY;
 
-function sampleAt(s: number): TrackSample & { i: number } {
+function sampleAt(track: BuiltTrack, s: number): TrackSample & { i: number } {
+  const { samples } = track;
+  const step = samples[1]!.s;
   const len = track.length;
   const wrapped = ((s % len) + len) % len;
   const i = Math.floor(wrapped / step) % samples.length;
@@ -45,6 +59,7 @@ function startBot(n: number) {
   const send = (m: C2S) => ws.readyState === ws.OPEN && ws.send(encode(m));
   let myId = 0;
   let phase: RacePhase = 'lobby';
+  let track = trackFor(APEX_PARK.id);
   let slot = 0;
   let s = 0;
   let lateral = 0;
@@ -56,6 +71,7 @@ function startBot(n: number) {
 
   const toGrid = () => {
     const g = track.spawnGrid[slot]!;
+    const { samples } = track;
     // Find the grid spot's distance along the track and its lateral offset.
     let best = 0;
     let bestD = Infinity;
@@ -76,10 +92,12 @@ function startBot(n: number) {
       myId = msg.playerId;
       slot = msg.players.find((p) => p.id === myId)!.slot;
       phase = msg.race.phase;
+      track = trackFor(msg.race.trackId);
       toGrid();
       console.log(`Bot ${n} joined as #${myId} in slot ${slot + 1}`);
     }
     if (msg.t === 'race') {
+      track = trackFor(msg.race.trackId);
       if (msg.race.phase !== 'racing') toGrid();
       phase = msg.race.phase;
     }
@@ -97,14 +115,14 @@ function startBot(n: number) {
     if (!myId) return;
     // Look ahead for corners and slow down for them.
     let ahead = 0;
-    for (let d = 10; d <= 60; d += 10) ahead = Math.max(ahead, Math.abs(sampleAt(s + d).curvature));
+    for (let d = 10; d <= 60; d += 10) ahead = Math.max(ahead, Math.abs(sampleAt(track, s + d).curvature));
     const target = phase === 'racing' ? (ahead > 1 / 60 ? cornerSpeed : topSpeed) : 0;
     speed += Math.sign(target - speed) * Math.min(Math.abs(target - speed), (target > speed ? 6 : 12) * dt);
     s += speed * dt;
     if (phase === 'racing') lateral *= 0.995; // drift back toward the racing line
     spin += (speed * dt) / CAR.wheels.radius;
 
-    const here = sampleAt(s);
+    const here = sampleAt(track, s);
     const yaw = Math.atan2(here.tx, here.tz);
     const steer = Math.atan(here.curvature * wheelbase);
     const y = wheelY;

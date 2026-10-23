@@ -16,7 +16,9 @@
     "test": "vitest run",
     "handling": "node node_modules/tsx/dist/cli.mjs scripts/handling-report.ts",
     "assets": "node scripts/download-assets.mjs",
-    "bots": "node node_modules/tsx/dist/cli.mjs scripts/bots.ts"
+    "bots": "node node_modules/tsx/dist/cli.mjs scripts/bots.ts",
+    "tracks": "node node_modules/tsx/dist/cli.mjs tools/build-tracks.ts",
+    "tracks:check": "node node_modules/tsx/dist/cli.mjs tools/check-tracks.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

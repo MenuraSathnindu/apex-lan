@@ -106,6 +106,25 @@ describe('Room', () => {
     expect(guest.last('roster').players[1]!.tyre).toBe('soft');
   });
 
+  it('lets the host pick a track in the lobby, which also sets its default laps', () => {
+    const second = { ...APEX_PARK, id: 'second', name: 'Second', laps: 7 };
+    const room = new Room({
+      now: () => 0,
+      tracks: { list: () => [], get: (id) => (id === APEX_PARK.id ? APEX_PARK : id === 'second' ? second : null) },
+    });
+    const host = new FakeConn();
+    const guest = new FakeConn();
+    room.handle(host, { t: 'hello', sessionId: null, name: 'Ann', color: 0 });
+    room.handle(guest, { t: 'hello', sessionId: null, name: 'Ben', color: 1 });
+    expect(guest.last('welcome').race.trackId).toBe(APEX_PARK.id);
+    room.handle(guest, { t: 'setTrack', trackId: 'second' });
+    expect(guest.inbox.some((m) => m.t === 'race' && m.race.trackId === 'second')).toBe(false);
+    room.handle(host, { t: 'setTrack', trackId: 'nowhere' });
+    expect(guest.inbox.some((m) => m.t === 'race')).toBe(false);
+    room.handle(host, { t: 'setTrack', trackId: 'second' });
+    expect(guest.last('race').race).toMatchObject({ trackId: 'second', laps: 7 });
+  });
+
   it('sanitises names', () => {
     const { join } = setup();
     const a = join('  \u0007Zed the very long name indeed  ');
@@ -272,7 +291,7 @@ describe('Room', () => {
     const step = track.samples[1]!.s;
     const startS = track.samples[track.startIndex]!.s - 15;
     for (let d = 0; d < track.length + 30; d += 40 / 30) {
-      const s = (startS + d) % track.length;
+      const s = (((startS + d) % track.length) + track.length) % track.length;
       const smp = track.samples[Math.floor(s / step) % track.samples.length]!;
       advance(1000 / 30);
       room.handle(a, { t: 'state', s: { ...STATE, p: [smp.x, 0.7, smp.z] } });

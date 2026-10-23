@@ -217,6 +217,8 @@ export const CAR = {
     asphalt: { grip: 1.0, drag: 0 },
     curb: { grip: 0.92, drag: 0 },
     grass: { grip: 0.55, drag: 45 },
+    /** Gravel traps: little grip and a lot of drag, so they stop a car that runs wide. */
+    gravel: { grip: 0.45, drag: 170 },
   },
 
   safety: {
@@ -482,6 +484,66 @@ export const POST = {
 // ---------------------------------------------------------------------------
 // Race rules
 // ---------------------------------------------------------------------------
+
+/**
+ * How a track's centreline is turned into a circuit (shared/src/track/track.ts): kerbs, run-off,
+ * barriers, pit lane and the places for grandstands. Widths in metres.
+ */
+export const TRACK_STYLE = {
+  /** Centreline sample spacing at runtime (m). */
+  sampleSpacing: 2,
+  curbWidth: 1.2,
+  /** Kerbs where the corner radius is tighter than this (m). */
+  curbMaxRadius: 110,
+  /** White edge lines: width and inset from the road edge. */
+  lineWidth: 0.25,
+  lineInset: 0.3,
+  permanent: {
+    /** Grass between the kerb line and the barrier. */
+    grassRunoff: 10,
+    /** Gravel trap on the outside of corners tighter than gravelRadius, extended gravelPad m either side. */
+    gravelRunoff: 22,
+    gravelRadius: 160,
+    gravelPad: 30,
+    barrier: { kind: 'armco' as BarrierKind, height: 0.9, thickness: 0.35 },
+  },
+  street: {
+    /** Strip of pavement between the road and the wall. */
+    runoff: 1.2,
+    barrier: { kind: 'concrete' as BarrierKind, height: 1.2, thickness: 0.6 },
+  },
+  /** Barriers stop this far short of another part of the track; closer than that = crossing (no barrier). */
+  crossingMargin: 2,
+  /** Parts of the track less than this far apart along it count as the same part (m). */
+  sameSectionDistance: 70,
+  /** Where two parts of the track cross (a bridge in real life), the later one is lifted this much. */
+  crossingLift: 0.03,
+  pit: {
+    /** Gap between the road edge and the lane (holds the pit wall), lane width, and the ramp length. */
+    gap: 9,
+    width: 10,
+    ramp: 130,
+    wall: { kind: 'concrete' as BarrierKind, height: 1.0, thickness: 0.5 },
+    /** Pit building depth / height and garage spacing. */
+    buildingDepth: 14,
+    buildingHeight: 8,
+    garageSpacing: 12,
+  },
+  grandstand: {
+    /** Stands along the start straight (m before/after the line), and spacing between them. */
+    straightBefore: 260,
+    straightAfter: 220,
+    spacing: 70,
+    length: 60,
+    depth: 11,
+    /** Also behind the outside of this many of the tightest corners. */
+    corners: 4,
+    /** Free space a stand needs from any other part of the track (m). */
+    clearance: 30,
+  },
+};
+
+export type BarrierKind = 'armco' | 'concrete';
 
 export const RACE = {
   defaultLaps: 3,

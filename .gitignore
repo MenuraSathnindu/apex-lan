@@ -11,3 +11,7 @@ client/public/models/
 client/public/sounds/
 # Copied from three by the Vite plugin
 client/public/draco/
+
+# Track source datasets (cloned, see tools/README.md) and generator previews
+tools/data/
+tools/out/

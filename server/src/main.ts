@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DEV_CLIENT_PORT, SERVER_PORT, SNAPSHOT_RATE, WS_PATH, decodeC2S, encode } from '@apex/shared';
 import { Room, type Connection } from './game/room.ts';
+import { trackCatalog } from './tracks/catalog.ts';
 import { createStaticHandler } from './net/staticFiles.ts';
 import { lanAddresses } from './util/lanAddress.ts';
 import { renderQr } from './util/qr.ts';
@@ -12,11 +13,14 @@ const isDev = process.argv.includes('--dev');
 const port = Number(process.env.PORT ?? SERVER_PORT);
 
 // Works for both `src/main.ts` (dev) and `dist/main.js` (prod): both sit one level below server/.
-const clientDist = resolve(dirname(fileURLToPath(import.meta.url)), '../../client/dist');
+const here = dirname(fileURLToPath(import.meta.url));
+const clientDist = resolve(here, '../../client/dist');
+// Generated tracks (committed, so always present in the repo).
+const tracksDir = resolve(here, '../../client/public/tracks');
 
 const http = createServer(createStaticHandler(clientDist));
 const wss = new WebSocketServer({ server: http, path: WS_PATH, maxPayload: 64 * 1024 });
-const room = new Room({ log: (m) => console.log(`[room] ${m}`) });
+const room = new Room({ log: (m) => console.log(`[room] ${m}`), tracks: trackCatalog(tracksDir, (m) => console.log(`[tracks] ${m}`)) });
 
 function toConnection(ws: WebSocket): Connection {
   return {

@@ -1,5 +1,6 @@
 import {
   RACE,
+  boundaryAt,
   distanceFromStart,
   inZone,
   nearestSample,
@@ -30,17 +31,21 @@ export class RaceController {
   private stuckTime = 0;
   private offTrackTime = 0;
   private flippedTime = 0;
-  private readonly barrierOffset: number;
 
   constructor(
-    private readonly track: BuiltTrack,
-    private readonly gates: Gate[],
+    private track: BuiltTrack,
+    private gates: Gate[],
     private readonly car: Vehicle,
     private readonly session: Session,
     private readonly gridPose: () => SpawnPose,
-  ) {
-    const d = track.def;
-    this.barrierOffset = d.roadWidth / 2 + d.curbWidth + d.runoff + d.barrierThickness;
+  ) {}
+
+  /** Switch to another track (between races). */
+  setTrack(track: BuiltTrack, gates: Gate[]): void {
+    this.track = track;
+    this.gates = gates;
+    this.hint = -1;
+    this.reset();
   }
 
   reset(): void {
@@ -94,14 +99,14 @@ export class RaceController {
     this.wrongWay = this.wrongWayTime > RACE.wrongWaySeconds;
 
     // Stuck on the grass.
-    const onGrass = this.car.surfaces.every((s) => s === 'grass');
+    const onGrass = this.car.surfaces.every((s) => s === 'grass' || s === 'gravel');
     const slow = Math.abs(vehicleSpeed(this.car)) < RACE.stuckSpeed;
     this.stuckTime = onGrass && slow ? this.stuckTime + dt : 0;
     if (this.stuckTime > RACE.stuckOnGrassSeconds) return this.respawn('stuck');
 
     // Escaped the circuit (over a barrier) or fell off the world.
     const dist = Math.hypot(p.x - smp.x, p.z - smp.z);
-    this.offTrackTime = dist > this.barrierOffset + 2 || p.y < -5 ? this.offTrackTime + dt : 0;
+    this.offTrackTime = dist > boundaryAt(this.track, this.hint) + 2 || p.y < -5 ? this.offTrackTime + dt : 0;
     if (this.offTrackTime > 1) return this.respawn('off-track');
 
     // On its roof or side.

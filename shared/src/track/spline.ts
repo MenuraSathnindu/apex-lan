@@ -12,12 +12,15 @@ export interface TrackSample {
   s: number;
   /** Signed curvature (1/m); positive = turning left. */
   curvature: number;
+  /** Road half-widths to the left (+normal side) and right of the centreline (m). */
+  wl: number;
+  wr: number;
 }
 
 type P2 = readonly [number, number];
 
 /** Centripetal Catmull-Rom point between p1 and p2 (no cusps or self-loops on sharp corners). */
-function catmullRom(p0: P2, p1: P2, p2: P2, p3: P2, t: number): [number, number] {
+export function catmullRom(p0: P2, p1: P2, p2: P2, p3: P2, t: number): [number, number] {
   const knot = (a: P2, b: P2) => Math.max(Math.hypot(b[0] - a[0], b[1] - a[1]) ** 0.5, 1e-6);
   const t0 = 0;
   const t1 = t0 + knot(p0, p1);
@@ -71,7 +74,20 @@ export function sampleClosedSpline(points: readonly P2[], spacing: number): Trac
     pts.push([a[0] + (b[0] - a[0]) * w, a[1] + (b[1] - a[1]) * w]);
   }
 
-  // 4. Tangents, normals, curvature from neighbours.
+  return framesFromPoints(pts, step, 0, 0);
+}
+
+/**
+ * Tangents, left normals and signed curvature for an evenly spaced closed polyline.
+ * `widths` gives each point's [left, right] half-width, or constant ones are used.
+ */
+export function framesFromPoints(
+  pts: readonly (readonly [number, number])[],
+  step: number,
+  wl: number | readonly number[],
+  wr: number | readonly number[],
+): TrackSample[] {
+  const count = pts.length;
   return pts.map((p, k) => {
     const prev = pts[(k - 1 + count) % count]!;
     const next = pts[(k + 1) % count]!;
@@ -87,6 +103,17 @@ export function sampleClosedSpline(points: readonly P2[], spacing: number): Trac
     const outZ = next[1] - p[1];
     // Positive = left turn (heading +Z, turning toward +X).
     const angle = Math.atan2(inZ * outX - inX * outZ, inX * outX + inZ * outZ);
-    return { x: p[0], z: p[1], tx, tz, nx: tz, nz: -tx, s: k * step, curvature: angle / step };
+    return {
+      x: p[0],
+      z: p[1],
+      tx,
+      tz,
+      nx: tz,
+      nz: -tx,
+      s: k * step,
+      curvature: angle / step,
+      wl: typeof wl === 'number' ? wl : wl[k]!,
+      wr: typeof wr === 'number' ? wr : wr[k]!,
+    };
   });
 }

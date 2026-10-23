@@ -70,7 +70,7 @@ export class Effects {
     const lv = car.body.linvel();
     for (let i = 0; i < 4; i++) {
       const w = fx.slips[i]!;
-      this.wheel(LOCAL_KEYS[i]!, w.point.x, w.point.y, w.point.z, w.slip, w.inContact && w.surface !== 'grass', lv.x, lv.z, dt);
+      this.wheel(LOCAL_KEYS[i]!, w.point.x, w.point.y, w.point.z, w.slip, w.inContact && w.surface !== 'grass' && w.surface !== 'gravel', lv.x, lv.z, dt);
     }
 
     // Grinding along a barrier: a steady stream of sparks.
