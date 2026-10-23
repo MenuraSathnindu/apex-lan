@@ -44,6 +44,7 @@ import { LocalCarFx } from './game/localCarFx.ts';
 import { RaceController } from './game/raceController.ts';
 import { RemoteCars } from './game/remoteCars.ts';
 import { AccountClient } from './game/accountClient.ts';
+import { Spectator } from './game/spectator.ts';
 import { Session } from './game/session.ts';
 import { SettingsStore } from './game/userSettings.ts';
 import { createInputController } from './input/inputController.ts';
@@ -273,7 +274,14 @@ const raceOverlay = createRaceOverlay(
   () => socket.send({ t: 'endRace' }),
   (text) => (text === 'GO!' ? audio.beep(1046, 0.55) : audio.beep(523, 0.2)),
 );
-const gridPose = () => track.spawnGrid[session.me?.slot ?? 0] ?? track.spawnGrid[0]!;
+/** Where our car starts this session: grid slot, or a pit box in qualifying. */
+const gridPose = () => {
+  const places = session.race.session.kind === 'qualifying' ? track.pitBoxes : track.spawnGrid;
+  return places[session.me?.gridSlot ?? session.me?.slot ?? 0] ?? places[0]!;
+};
+/** Not in this session (guest, or not entered in the championship): watch instead of drive. */
+const spectating = () => session.joined && session.me?.entrant === false && session.race.phase !== 'lobby';
+const spectator = new Spectator();
 const raceController = new RaceController(track, buildCheckpoints(track), car, session, gridPose);
 const raceHud = createRaceHud($('#racehud'), session, clock, raceController);
 const results = createResults($('#results'), session, () => socket.send({ t: 'endRace' }));
@@ -403,16 +411,24 @@ startLoop({
       car.ers.overtake = d.overtake;
       session.lastDetection = d;
     }
-    raceController.locate();
-    stepVehicle(car, lastInput, FIXED_DT);
+    // Spectators have no car: it's taken out of the world and sends nothing.
+    const watching = spectating();
+    if (car.body.isEnabled() === watching) car.body.setEnabled(!watching);
+    carView.root.visible = !watching;
+    if (!watching) {
+      raceController.locate();
+      stepVehicle(car, lastInput, FIXED_DT);
+    }
     remoteCars.stepPhysics();
     world!.step();
-    if (racing) raceController.step(FIXED_DT);
-    localFx.step(car, lastInput, FIXED_DT);
-    effects.localTick(localFx, car, FIXED_DT);
+    if (!watching) {
+      if (racing) raceController.step(FIXED_DT);
+      localFx.step(car, lastInput, FIXED_DT);
+      effects.localTick(localFx, car, FIXED_DT);
+    }
     capturePose();
 
-    if (session.joined && ++tick % SEND_EVERY === 0) {
+    if (session.joined && !watching && ++tick % SEND_EVERY === 0) {
       const braking = (lastInput.brake > 0 && vehicleSpeed(car) > 0.5) || lastInput.handbrake;
       socket.send({ t: 'state', s: packCarState(car, braking) });
     }
@@ -429,16 +445,24 @@ startLoop({
     carView.setBraking((lastInput.brake > 0 && speed > 0.5) || (lastInput.handbrake && session.race.phase === 'racing'));
 
     if (input.consumeMenuToggle()) menu.toggle();
+    const watching = spectating();
+    const visibleIds = watching ? [...remoteCars.visible()].map((c) => c.id) : [];
     if (input.consumeCameraCycle()) {
-      const mode = cameraRig.cycle();
-      settings.update((s) => (s.camera.mode = mode));
+      if (watching) spectator.cycle(visibleIds);
+      else {
+        const mode = cameraRig.cycle();
+        settings.update((s) => (s.camera.mode = mode));
+      }
     }
-    cameraRig.update(frameDt, renderPos, renderQuat, speed);
+    const followed = watching ? [...remoteCars.visible()].find((c) => c.id === spectator.target(visibleIds, session.standings[0]?.id ?? null)) : undefined;
+    if (followed) cameraRig.update(frameDt, followed.pos, followed.quat, followed.speed);
+    else cameraRig.update(frameDt, renderPos, renderQuat, speed);
     remoteCars.render(gfx.camera, frameDt);
     for (const rc of remoteCars.visible()) effects.remoteFrame(rc, frameDt);
     audio.updateListener(gfx.camera);
     const gearbox = localFx.drivetrain;
-    voice.update({ rpm: gearbox.rpm, load: gearbox.load, slip: localFx.screechSlip, scrape: localFx.scrape, speed: Math.abs(speed) });
+    if (watching) voice.silence();
+    else voice.update({ rpm: gearbox.rpm, load: gearbox.load, slip: localFx.screechSlip, scrape: localFx.scrape, speed: Math.abs(speed) });
     for (; localFx.upshifts > 0; localFx.upshifts--) voice.pop();
     for (const up of localFx.shifts.splice(0)) voice.shift(up);
     for (const hit of localFx.impacts.splice(0)) {

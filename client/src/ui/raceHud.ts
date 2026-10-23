@@ -27,6 +27,7 @@ const RESPAWN_TEXT = {
 /** In-race HUD: lap/position/timing panel, live ranking, wrong-way banner, toasts. */
 export function createRaceHud(root: HTMLElement, session: Session, clock: ServerClock, race: RaceController) {
   root.innerHTML = `
+    <div class="rh-session" hidden></div>
     <div class="rh-panel">
       <div class="rh-row"><span class="rh-label">POS</span><span class="rh-pos"></span></div>
       <div class="rh-row"><span class="rh-label">LAP</span><span class="rh-lap"></span></div>
@@ -40,6 +41,7 @@ export function createRaceHud(root: HTMLElement, session: Session, clock: Server
     <div class="rh-toasts"></div>`;
   const $ = (s: string) => root.querySelector<HTMLElement>(s)!;
   const panel = $('.rh-panel');
+  const sessionEl = $('.rh-session');
   const posEl = $('.rh-pos');
   const lapEl = $('.rh-lap');
   const curEl = $('.rh-current');
@@ -74,10 +76,25 @@ export function createRaceHud(root: HTMLElement, session: Session, clock: Server
       const me = session.myStanding;
       const total = session.standings.length;
       panel.hidden = !me;
+      const info = session.race.session;
+      const qualifying = info.kind === 'qualifying';
+
+      // Session label: "R3/24 · Qualifying · 6:12 left" (championship), "Qualifying" etc.
+      if (info.kind !== 'free' || info.round) {
+        const kind = info.kind === 'qualifying' ? 'Qualifying' : info.kind === 'sprint' ? 'Sprint' : 'Race';
+        let text = info.round ? `R${info.round.round}/${info.round.rounds} · ${kind}` : kind;
+        if (qualifying && info.endsAt) {
+          const left = info.endsAt - clock.now();
+          text += left > 0 ? ` · ${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, '0')} left` : ' · finish your lap';
+        } else if (qualifying) text += ' · one flying lap';
+        if (session.me && !session.me.entrant) text += ' · spectating (C: next car)';
+        sessionEl.textContent = text;
+        sessionEl.hidden = false;
+      } else sessionEl.hidden = true;
 
       if (me) {
         posEl.textContent = `${me.pos}/${total}`;
-        lapEl.textContent = `${Math.min(me.laps + 1, laps)}/${laps}`;
+        lapEl.textContent = qualifying ? String(me.laps + 1) : `${Math.min(me.laps + 1, laps)}/${laps}`;
         const running = phase === 'racing' && me.finishTime === null;
         curEl.textContent = running ? formatTime(clock.now() - me.lapStart) : formatTime(me.finishTime ?? 0);
         lastEl.textContent = formatTime(me.lastLap);
@@ -85,13 +102,13 @@ export function createRaceHud(root: HTMLElement, session: Session, clock: Server
       }
 
       // Ranking list (only rebuilt when it changes).
-      const key = session.standings.map((s) => `${s.id}:${s.laps}:${s.finishTime ?? ''}`).join('|') + session.players.map((p) => `${p.id}${p.photo}${p.tag}`).join();
+      const key = session.standings.map((s) => `${s.id}:${s.laps}:${s.finishTime ?? ''}:${s.bestLap ?? ''}`).join('|') + session.players.map((p) => `${p.id}${p.photo}${p.tag}`).join();
       if (key !== rankKey) {
         rankKey = key;
         rankEl.innerHTML = session.standings
           .map((s) => {
             const p = session.players.find((x) => x.id === s.id);
-            const status = s.finishTime !== null ? 'FIN' : `L${Math.min(s.laps + 1, laps)}`;
+            const status = qualifying ? (s.bestLap !== null ? formatTime(s.bestLap) : 'no time') : s.finishTime !== null ? 'FIN' : `L${Math.min(s.laps + 1, laps)}`;
             return `<li class="${s.id === session.myId ? 'me' : ''} ${p?.connected === false ? 'away' : ''}">
               <span class="rk-pos">${s.pos}</span>
               ${avatarHtml({ photo: p?.photo ?? null, tag: p?.tag ?? '?', color: p?.livery.primary ?? CAR_COLORS[p?.color ?? 0] }, 20, 'rk-avatar')}
