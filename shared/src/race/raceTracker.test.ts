@@ -230,3 +230,42 @@ describe('RaceTracker penalties', () => {
     expect(tracker.standings()[0]!.bestLap).toBeNull();
   });
 });
+
+describe('RaceTracker gaps', () => {
+  it('gap is the time behind the leader at the last common gate', () => {
+    const tracker = new RaceTracker(track, gates, [1, 2], START, 3);
+    drive(tracker, 1, gridS, 20 + 400, 30, START);
+    drive(tracker, 2, gridS, 20 + 350, 30, START + 2000);
+    const [lead, second] = tracker.standings();
+    expect(lead).toMatchObject({ id: 1, gap: null, lapsDown: 0 });
+    expect(second!.id).toBe(2);
+    expect(Math.abs(second!.gap! - 2000)).toBeLessThan(2 * DT);
+  });
+
+  it('lapped cars report lapsDown', () => {
+    const tracker = new RaceTracker(track, gates, [1, 2], START, 5);
+    drive(tracker, 1, gridS, 20 + track.length + 300, 30, START);
+    // Ben crawls 250 m at 10 m/s: at gate 2 he is ~15 s behind where Ann was.
+    drive(tracker, 2, gridS, 20 + 250, 10, START);
+    const second = tracker.standings()[1]!;
+    expect(second.id).toBe(2);
+    expect(second.lapsDown).toBe(1);
+    expect(second.gap).toBeGreaterThan(10_000);
+  });
+
+  it('gap is null before any gate', () => {
+    const tracker = new RaceTracker(track, gates, [1, 2], START, 3);
+    expect(tracker.standings().map((s) => s.gap)).toEqual([null, null]);
+    tracker.onState(2, track.samples[0]!.x, track.samples[0]!.z, START + 10);
+    expect(tracker.standings().every((s) => s.gap === null && s.lapsDown === 0)).toBe(true);
+  });
+
+  it('finished gaps use penalised finish times', () => {
+    const tracker = new RaceTracker(track, gates, [1, 2], START, 1);
+    drive(tracker, 1, gridS, 20 + track.length + 5, 30, START);
+    drive(tracker, 2, gridS, 20 + track.length + 5, 30, START + 1000);
+    tracker.addPenalty(2, 5000);
+    const [, second] = tracker.standings();
+    expect(Math.abs(second!.gap! - 6000)).toBeLessThan(2 * DT);
+  });
+});

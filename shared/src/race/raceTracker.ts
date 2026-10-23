@@ -21,6 +21,10 @@ export interface Standing {
   dnf: boolean;
   /** Time penalties (ms), added to the finish time for the classification. */
   penaltyMs: number;
+  /** Time behind the leader (ms) at the last gate both passed (penalised finish times once finished); null for the leader. */
+  gap: number | null;
+  /** Whole laps behind the leader. */
+  lapsDown: number;
 }
 
 /** Finish time with penalties (what the classification is ordered by), or null if not finished. */
@@ -94,6 +98,8 @@ interface Racer {
   /** The current lap had an implausible jump (or was deleted for track limits). */
   invalid: boolean;
   penaltyMs: number;
+  /** Server time of every gate crossing since the start, in order (for gaps). */
+  gateTimes: number[];
 }
 
 const wrap = (d: number, len: number) => ((((d + len / 2) % len) + len) % len) - len / 2;
@@ -153,6 +159,7 @@ export class RaceTracker {
         history: [],
         invalid: false,
         penaltyMs: 0,
+        gateTimes: [],
       });
     }
   }
@@ -174,6 +181,7 @@ export class RaceTracker {
       if (!plausible) r.invalid = true;
       const gate = this.gates[r.nextGate]!;
       if (plausible && crossesGate(gate, r.x, r.z, x, z)) {
+        r.gateTimes.push(ts);
         const sector = this.sectorGates.indexOf(r.nextGate);
         if (sector > 0) r.splits[sector] = ts;
         if (r.nextGate === 0) events.push(this.completeLap(r, ts));
@@ -288,6 +296,18 @@ export class RaceTracker {
     return r.laps * n + passed + frac;
   }
 
+  /** Gap and laps down of `r` behind `leader`. */
+  private gapTo(leader: Racer | undefined, r: Racer): { gap: number | null; lapsDown: number } {
+    if (!leader || leader === r) return { gap: null, lapsDown: 0 };
+    const lt = classifiedTime(leader);
+    const rt = classifiedTime(r);
+    if (lt !== null && rt !== null) return { gap: rt - lt, lapsDown: 0 };
+    const common = Math.min(leader.gateTimes.length, r.gateTimes.length);
+    if (common === 0) return { gap: null, lapsDown: 0 };
+    const lapsDown = Math.floor((leader.gateTimes.length - r.gateTimes.length) / this.gates.length);
+    return { gap: Math.max(0, r.gateTimes[common - 1]! - leader.gateTimes[common - 1]!), lapsDown: Math.max(0, lapsDown) };
+  }
+
   standings(): Standing[] {
     const rows = [...this.racers.values()].map((r) => ({ r, progress: this.progress(r) }));
     rows.sort((a, b) => {
@@ -296,6 +316,7 @@ export class RaceTracker {
       if (fa !== null || fb !== null) return (fa ?? Infinity) - (fb ?? Infinity);
       return b.progress - a.progress;
     });
+    const leader = rows[0]?.r;
     return rows.map(({ r }, i) => ({
       id: r.id,
       pos: i + 1,
@@ -307,6 +328,7 @@ export class RaceTracker {
       finishTime: r.finishTime,
       dnf: this.final && r.finishTime === null,
       penaltyMs: r.penaltyMs,
+      ...this.gapTo(leader, r),
     }));
   }
 }
