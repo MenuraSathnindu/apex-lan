@@ -163,6 +163,10 @@ Do R1–R7 and R13 in **p8**, R8–R10 and R12 right before the feature that nee
   stats equal a recomputation from raw rows in a test; deleting a profile removes its photo.
 
 ### p12 — Championship mode
+> **Status 2026-10-23:** done as designed in `docs/superpowers/specs/2026-10-23-championship-design.md`
+> (decisions there replace the sketch below: profiles only, late entries allowed, qualifying timed or
+> one-shot per season, one qualifying sets both grids, player-made teams of 1–2, real 2026-style preset).
+
 - **Model (`shared/src/championship/`):** `ChampionshipDef` (calendar of rounds; each round:
   trackId + weekend format), fictional `Team`s (4 teams × 2 cars for 8 players; teammates assigned
   in the lobby, host can shuffle), `PointsTable` data (race 25-18-15-12-10-8-6-4, sprint 8-7-…-1

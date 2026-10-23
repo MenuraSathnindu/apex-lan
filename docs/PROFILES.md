@@ -46,8 +46,9 @@ The host records every race that reaches the results screen:
 - **Personal best and sector bests per track**, from every lap you've completed (sector times
   come from the track's three sector lines). *Ideal* = the sum of your best sectors.
 - **Head to head**: in races you both started, who finished ahead.
-- **Poles** and **championships** are recorded once qualifying and championship mode exist
-  (phase 12); until then they stay 0.
+- **Poles** come from championship qualifying (P1 starts the race on pole); **championships** count
+  seasons won. Sprints add their points to the career but don't count as races or wins.
+- A lap with a respawn in it still counts as a lap driven, but never as a best or a qualifying time.
 - Guests race normally but nothing is recorded for them.
 
 **Hall of Fame** (lobby → 🏆): every driver's fastest lap on each track, with sectors and the date.

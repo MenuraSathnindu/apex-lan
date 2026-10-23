@@ -2090,3 +2090,105 @@ body {
   padding: 8px 14px;
   font-size: 14px;
 }
+
+/* --- Champion finale ------------------------------------------------------ */
+
+.finale {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 35%, rgba(60, 48, 10, 0.92), rgba(6, 7, 10, 0.96));
+  color: #fff;
+}
+
+.finale[hidden] {
+  display: none;
+}
+
+.fn-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.fn-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+
+.fn-kicker {
+  margin: 0;
+  color: #ffd447;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.fn-photo {
+  box-shadow: 0 0 0 5px #ffd447, 0 0 60px rgba(255, 212, 71, 0.6);
+}
+
+.fn-name {
+  margin: 4px 0 0;
+  font-size: 48px;
+}
+
+.fn-line {
+  margin: 0;
+  font-size: 17px;
+}
+
+.fn-team {
+  padding: 1px 8px;
+  border-left: 5px solid var(--c);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.fn-podium {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  margin: 10px 0;
+}
+
+.fn-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 110px;
+}
+
+.fn-block {
+  width: 100%;
+  border-radius: 6px 6px 0 0;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.fn-step.p1 .fn-block {
+  height: 80px;
+  background: rgba(255, 212, 71, 0.35);
+}
+
+.fn-step.p2 .fn-block {
+  height: 58px;
+}
+
+.fn-step.p3 .fn-block {
+  height: 42px;
+}
+
+.hud.spectating .hud-speedo,
+.hud.spectating .hud-power {
+  display: none;
+}

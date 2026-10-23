@@ -71,6 +71,7 @@ import { createMenu } from './ui/menu.ts';
 import { createTrackSelect } from './ui/trackSelect.ts';
 import { createProfileScreen } from './ui/profileScreen.ts';
 import { createChampionshipHub } from './ui/championship/hub.ts';
+import { createFinale } from './ui/championship/finale.ts';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const loading = createLoadingScreen($('#loading'));
@@ -192,11 +193,12 @@ void fetch('/tracks/index.json')
   .catch(() => console.warn('[tracks] no generated tracks (client/public/tracks/index.json) — only the built-in one.'));
 const trackSelect = createTrackSelect($('#track-select'), (trackId) => socket.send({ t: 'setTrack', trackId }));
 const trackLoading = $('#track-loading');
+const finale = createFinale($('#finale'));
 const hub = createChampionshipHub($('#championship'), {
   session,
   send: (msg) => socket.send(msg),
   tracks: () => trackList,
-  showFinale: () => hub.show('drivers'), // the champion screen arrives with the finale task
+  showFinale: (view) => finale.show(view),
 });
 // Short messages from the server (refused actions).
 const noticeEl = $('#notice');
@@ -224,6 +226,8 @@ const profiles = createProfileScreen($('#profiles'), {
 
 /** The track the room wants; the one we have may still be loading. */
 let wantedTrack = track.def.id;
+/** The season as last seen, to spot the moment it finishes (loading an old finished one doesn't replay the finale). */
+let lastSeason: { id: number; status: string } | null = null;
 async function switchTrack(id: string) {
   wantedTrack = id;
   if (id === track.def.id) return;
@@ -351,6 +355,12 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
     profiles.refresh();
   }
   if (msg.t === 'notice') showNotices();
+  // The last race of a season just finished (same season, now finished): celebrate, for everyone.
+  if (msg.t === 'champ') {
+    const v = msg.view;
+    if (v && v.status === 'finished' && lastSeason?.id === v.id && lastSeason.status !== 'finished') finale.show(v);
+    lastSeason = v ? { id: v.id, status: v.status } : null;
+  }
   if (msg.t === 'champ' || msg.t === 'champList' || msg.t === 'roster') hub.refresh();
   if (msg.t === 'roster' && session.account && session.me?.profileId === session.account.id) {
     // Tag / photo / livery edits come back through the roster: keep our account in step.
@@ -489,6 +499,8 @@ startLoop({
     for (const rc of remoteCars.visible()) effects.remoteFrame(rc, frameDt);
     audio.updateListener(gfx.camera);
     const gearbox = localFx.drivetrain;
+    // Our own speedo / power panel mean nothing while watching someone else.
+    $('#hud').classList.toggle('spectating', watching);
     if (watching) voice.silence();
     else voice.update({ rpm: gearbox.rpm, load: gearbox.load, slip: localFx.screechSlip, scrape: localFx.scrape, speed: Math.abs(speed) });
     for (; localFx.upshifts > 0; localFx.upshifts--) voice.pop();
