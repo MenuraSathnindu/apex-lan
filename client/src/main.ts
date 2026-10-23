@@ -15,6 +15,7 @@ import {
   createWorld,
   gearLabel,
   initRapier,
+  lapBudgetLeft,
   newErsLap,
   packCarState,
   readWheelStates,
@@ -232,6 +233,7 @@ const renderQuat = new THREE.Quaternion();
 const wheels: WheelState[] = [];
 const fwdTmp = new THREE.Vector3();
 const hudMe = { x: 0, z: 0, yaw: 0, color: 0 };
+const hudPower = { charge: 0, budget: 0, deploying: false, harvesting: false, aeroBlend: 0, inZone: false, overtake: false, gap: null as number | null };
 const HOLD: CarInput = { ...NEUTRAL_INPUT, handbrake: true };
 let lastInput: CarInput = HOLD;
 let tick = 0;
@@ -337,6 +339,15 @@ startLoop({
     hudMe.z = renderPos.z;
     hudMe.yaw = Math.atan2(fwdTmp.x, fwdTmp.z);
     hudMe.color = session.me?.color ?? session.profile.color;
+    const ers = car.ers;
+    hudPower.charge = ers.charge / CAR.ers.capacity;
+    hudPower.budget = Math.min(1, lapBudgetLeft(ers, CAR) / CAR.ers.lapDeployLimit);
+    hudPower.deploying = ers.deploying > 0;
+    hudPower.harvesting = ers.harvesting > 0;
+    hudPower.aeroBlend = car.aero.blend;
+    hudPower.inZone = car.inAeroZone;
+    hudPower.overtake = ers.overtake;
+    hudPower.gap = session.lastDetection?.gap ?? null;
     hud.update({
       dt: frameDt,
       speedMs: speed,
@@ -346,6 +357,7 @@ startLoop({
       gamepad: input.gamepadConnected,
       me: hudMe,
       others: remoteCars.visible(),
+      power: hudPower,
     });
     lobby.show(session.race.phase === 'lobby' || session.full);
     raceOverlay.update();

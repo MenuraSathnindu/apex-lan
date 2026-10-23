@@ -118,6 +118,133 @@ body {
   }
 }
 
+/* --- Power unit (battery, wings, overtake) ------------------------------- */
+
+.hud-power {
+  position: absolute;
+  right: 22px;
+  bottom: 222px;
+  width: 188px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-overtake {
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #b517d6;
+  text-align: center;
+  font-size: 13px;
+  animation: pw-pulse 0.8s ease-in-out infinite alternate;
+}
+
+.pw-gap {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+@keyframes pw-pulse {
+  from {
+    box-shadow: 0 0 0 rgba(219, 72, 255, 0);
+  }
+  to {
+    box-shadow: 0 0 18px rgba(219, 72, 255, 0.9);
+  }
+}
+
+.pw-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.pw-aero {
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.pw-aero[data-mode='straight'] {
+  background: #0f8f5b;
+  border-color: #3ff0a6;
+}
+
+.pw-zone {
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: rgba(15, 143, 91, 0.35);
+  color: #9dfccf;
+  font-size: 11px;
+}
+
+.pw-battery {
+  position: relative;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.pw-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left;
+  background: linear-gradient(90deg, #1c7fd6, #3fc2ff);
+  transition: transform 0.1s linear;
+}
+
+.pw-battery[data-state='deploy'] .pw-fill {
+  background: linear-gradient(90deg, #11a85a, #6dff9c);
+}
+
+.pw-battery.low .pw-fill {
+  background: linear-gradient(90deg, #a8321c, #ff7b5a);
+}
+
+.pw-label,
+.pw-state {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.pw-label {
+  left: 8px;
+}
+
+.pw-state {
+  right: 8px;
+  font-size: 11px;
+}
+
+.pw-budget {
+  height: 4px;
+  margin-top: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.pw-budget-fill {
+  height: 100%;
+  transform-origin: left;
+  background: #e8e8e8;
+}
+
+.pw-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.75;
+  text-align: right;
+}
+
 /* --- Pause menu ---------------------------------------------------------- */
 
 .menu-button {
