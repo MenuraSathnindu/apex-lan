@@ -1,6 +1,6 @@
 // A whole (short) season through the real room, runner and database, with simulated drivers.
 import { describe, expect, it } from 'vitest';
-import { APEX_PARK, COUNTDOWN_MS, buildTrack, computeStandings, presetLivery, type CarState, type S2C } from '@apex/shared';
+import { APEX_PARK, MAX_COUNTDOWN_MS, buildTrack, computeStandings, presetLivery, type CarState, type S2C } from '@apex/shared';
 import { ChampionshipDb } from '../db/championships.ts';
 import { PlayerDb } from '../db/database.ts';
 import { Room, type Connection } from './room.ts';
@@ -68,7 +68,7 @@ describe('a championship season, end to end', () => {
     const startNext = () => {
       room.handle(a, { t: 'champStartSession' });
       expect(a.last('race').race.phase).toBe('countdown');
-      for (let t = 0; t < COUNTDOWN_MS + 100; t += 100) tick(100);
+      for (let t = 0; t < MAX_COUNTDOWN_MS + 100; t += 100) tick(100);
     };
     const view = () => a.last('champ').view!;
 

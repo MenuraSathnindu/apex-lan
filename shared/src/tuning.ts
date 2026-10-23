@@ -572,6 +572,11 @@ export const RACE = {
   overtakeMaxGap: 1.0,
   /** Points for 1st, 2nd, … (finishers only, races with at least two starters). */
   points: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1],
+  /**
+   * Start lights (races, not qualifying): cars settle for `leadMs`, then a light comes on every
+   * `intervalMs`; all lit, they hold between holdMin and holdMax (from the race number), then out = GO.
+   */
+  lights: { leadMs: 1500, intervalMs: 1000, count: 5, holdMinMs: 1000, holdMaxMs: 3000 },
 };
 
 /** Championship weekends (sessions and points). */

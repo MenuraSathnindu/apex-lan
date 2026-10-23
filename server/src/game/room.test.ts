@@ -5,7 +5,7 @@ import {
   RACE,
   buildTrack,
   presetLivery,
-  COUNTDOWN_MS,
+  MAX_COUNTDOWN_MS,
   MAX_PLAYERS,
   REJOIN_GRACE_MS,
   type CarState,
@@ -102,7 +102,9 @@ describe('Room', () => {
     expect(guest.last('race').race.tyreWear).toBe('off');
 
     room.handle(host, { t: 'start' });
-    advance(COUNTDOWN_MS + 10);
+    advance(MAX_COUNTDOWN_MS + 10);
+    room.handle(host, { t: 'ping', clientTime: 0 });
+    room.handle(guest, { t: 'ping', clientTime: 0 });
     room.update();
     room.handle(guest, { t: 'profile', name: 'Ben', color: 1, tyre: 'hard' });
     expect(guest.last('roster').players[1]!.tyre).toBe('soft');
@@ -199,7 +201,7 @@ describe('Room', () => {
 
     room.handle(a, { t: 'start' });
     expect(b.last('race').race).toMatchObject({ phase: 'countdown', raceId: 1 });
-    advance(COUNTDOWN_MS + 10);
+    advance(MAX_COUNTDOWN_MS + 10);
     room.handle(a, { t: 'ping', clientTime: 0 });
     room.handle(b, { t: 'ping', clientTime: 0 });
     room.update();
@@ -284,7 +286,9 @@ describe('Room', () => {
     const b = join('Ben');
     room.handle(a, { t: 'setLaps', laps: 1 });
     room.handle(a, { t: 'start' });
-    advance(COUNTDOWN_MS + 10);
+    advance(MAX_COUNTDOWN_MS + 10);
+    room.handle(a, { t: 'ping', clientTime: 0 });
+    room.handle(b, { t: 'ping', clientTime: 0 });
     room.update();
     expect(b.last('race').race.phase).toBe('racing');
 
@@ -323,7 +327,8 @@ describe('Room', () => {
     const a = join('Ann');
     room.handle(a, { t: 'setLaps', laps: 1 });
     room.handle(a, { t: 'start' });
-    advance(COUNTDOWN_MS + 10);
+    advance(MAX_COUNTDOWN_MS + 10);
+    room.handle(a, { t: 'ping', clientTime: 0 });
     room.update();
     const track = buildTrack(APEX_PARK);
     const st = track.samples[track.startIndex]!;
@@ -400,7 +405,9 @@ describe('Room with profiles', () => {
     const g = join('Guest');
     room.handle(a, { t: 'setLaps', laps: 1 });
     room.handle(a, { t: 'start' });
-    advance(COUNTDOWN_MS + 10);
+    advance(MAX_COUNTDOWN_MS + 10);
+    room.handle(a, { t: 'ping', clientTime: 0 });
+    room.handle(g, { t: 'ping', clientTime: 0 });
     room.update();
     // Ann laps the track at 40 m/s; the guest stays put and becomes a DNF when results come.
     const track = buildTrack(APEX_PARK);
@@ -433,7 +440,8 @@ describe('Room with profiles', () => {
     const a = join('A', 'token-ann-0123456789');
     room.handle(a, { t: 'setLaps', laps: 1 });
     room.handle(a, { t: 'start' });
-    advance(COUNTDOWN_MS + 10);
+    advance(MAX_COUNTDOWN_MS + 10);
+    room.handle(a, { t: 'ping', clientTime: 0 });
     room.update();
     const track = buildTrack(APEX_PARK);
     const step = track.samples[1]!.s;

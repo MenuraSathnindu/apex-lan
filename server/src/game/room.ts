@@ -13,7 +13,7 @@ import {
   buildCheckpoints,
   buildTrack,
   CONNECTION_TIMEOUT_MS,
-  COUNTDOWN_MS,
+  countdownMs,
   MAX_PLAYERS,
   REJOIN_GRACE_MS,
   defaultTag,
@@ -556,8 +556,9 @@ export class Room {
     if (!entrants.length) return 'no entrant is connected';
     if (def.id !== this.race.trackId) this.useTrack(def);
 
-    const startsAt = this.now() + COUNTDOWN_MS;
     const kind = spec.session.kind;
+    const raceId = this.race.raceId + 1;
+    const startsAt = this.now() + countdownMs(kind, raceId);
     const laps = kind === 'sprint' ? sprintLaps(spec.session.laps) : spec.session.laps;
     const q = spec.session.qualifying;
     const session: SessionInfo = { ...spec.session, laps, endsAt: kind === 'qualifying' && q?.mode === 'timed' ? startsAt + q.minutes * 60_000 : 0 };
@@ -570,7 +571,7 @@ export class Room {
     this.tracker = new RaceTracker(this.track, this.gates, entrants, startsAt, kind === 'qualifying' ? 1_000_000 : laps);
     this.raceEntrants = new Map(entrants.map((id, i) => [id, { profileId: this.players.get(id)!.profile?.id ?? null, grid: i + 1 }]));
     this.running = { spec: { ...spec, entrants }, onDone, qualiLaps: [], doneAfterFlag: new Set(), flyingDone: new Set(), atFlag: null };
-    this.race = { ...this.race, phase: 'countdown', raceId: this.race.raceId + 1, startsAt, finishDeadline: 0, laps, tyreWear: spec.tyreWear, session };
+    this.race = { ...this.race, phase: 'countdown', raceId, startsAt, finishDeadline: 0, laps, tyreWear: spec.tyreWear, session };
     this.log(`${kind} ${this.race.raceId} starting: ${entrants.length} drivers, ${def.name}`);
     this.broadcastRoster();
     this.broadcast({ t: 'race', race: this.race });
