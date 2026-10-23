@@ -9,8 +9,10 @@ import {
   MAX_PLAYERS,
   REJOIN_GRACE_MS,
   type CarState,
+  type ProfileSummary,
   type S2C,
 } from '@apex/shared';
+import type { RaceInput } from '../db/database.ts';
 import { Room, type Connection } from './room.ts';
 
 class FakeConn implements Connection {
@@ -333,5 +335,96 @@ describe('Room', () => {
       room.update();
     }
     expect(a.inbox.some((m) => m.t === 'lap')).toBe(false);
+  });
+});
+
+describe('Room with profiles', () => {
+  const ann = { id: 1, name: 'Ann', tag: 'ANN', livery: { ...presetLivery(4), number: 11 }, photo: '/photos/a.webp' };
+  const ben = { id: 2, name: 'Ben', tag: 'BEN', livery: presetLivery(5), photo: null };
+  const tokens: Record<string, ProfileSummary> = { 'token-ann-0123456789': ann, 'token-ben-0123456789': ben };
+
+  function setupProfiles() {
+    let time = 1_000_000;
+    const saved: [number, unknown][] = [];
+    const races: RaceInput[] = [];
+    const room = new Room({
+      now: () => time,
+      profiles: { byToken: (t) => tokens[t] ?? null, saveLivery: (id, l) => saved.push([id, l]) },
+      results: { recordRace: (r) => races.push(r) },
+    });
+    const join = (name: string, token: string | null = null) => {
+      const c = new FakeConn();
+      room.handle(c, { t: 'hello', sessionId: null, name, color: 0, token });
+      return c;
+    };
+    return { room, join, saved, races, advance: (ms: number) => (time += ms) };
+  }
+
+  it('logs players in with a token: name, tag, photo and livery come from the profile', () => {
+    const { join } = setupProfiles();
+    const a = join('whatever', 'token-ann-0123456789');
+    expect(a.last('auth')).toMatchObject({ ok: true, profile: { id: 1 } });
+    const guest = join('Guest Person');
+    const roster = guest.last('roster').players;
+    expect(roster[0]).toMatchObject({ name: 'Ann', tag: 'ANN', photo: '/photos/a.webp', profileId: 1, livery: { number: 11 } });
+    expect(roster[1]).toMatchObject({ name: 'Guest Person', tag: 'GUE', photo: null, profileId: null });
+  });
+
+  it('refuses unknown tokens and a profile that is already driving', () => {
+    const { join, room } = setupProfiles();
+    expect(join('X', 'token-nobody-0123456789').last('auth')).toMatchObject({ ok: false, profile: null });
+    join('A', 'token-ann-0123456789');
+    const twin = join('A2');
+    room.handle(twin, { t: 'auth', token: 'token-ann-0123456789' });
+    expect(twin.last('auth')).toMatchObject({ ok: false });
+    room.handle(twin, { t: 'auth', token: 'token-ben-0123456789' });
+    expect(twin.last('auth')).toMatchObject({ ok: true, profile: { name: 'Ben' } });
+    room.handle(twin, { t: 'auth', token: null });
+    const me = twin.last('welcome').playerId;
+    expect(twin.last('roster').players.find((p) => p.id === me)).toMatchObject({ profileId: null });
+  });
+
+  it('keeps the profile name, saves livery edits to the profile, and follows profile updates', () => {
+    const { join, room, saved } = setupProfiles();
+    const a = join('A', 'token-ann-0123456789');
+    room.handle(a, { t: 'profile', name: 'Renamed', color: 0, livery: { ...ann.livery, number: 22 } });
+    expect(a.last('roster').players[0]).toMatchObject({ name: 'Ann', livery: { number: 22 } });
+    expect(saved).toEqual([[1, expect.objectContaining({ number: 22 })]]);
+    room.profileUpdated({ ...ann, tag: 'AAA', photo: '/photos/b.webp' });
+    expect(a.last('roster').players[0]).toMatchObject({ tag: 'AAA', photo: '/photos/b.webp' });
+  });
+
+  it('records the finished race: places, points, fastest lap, and every lap of profiled drivers', () => {
+    const { join, room, races, advance } = setupProfiles();
+    const a = join('A', 'token-ann-0123456789');
+    const g = join('Guest');
+    room.handle(a, { t: 'setLaps', laps: 1 });
+    room.handle(a, { t: 'start' });
+    advance(COUNTDOWN_MS + 10);
+    room.update();
+    // Ann laps the track at 40 m/s; the guest stays put and becomes a DNF when results come.
+    const track = buildTrack(APEX_PARK);
+    const step = track.samples[1]!.s;
+    for (let d = 0; d < track.length + 30; d += 40 / 30) {
+      const s = (((d - 15) % track.length) + track.length) % track.length;
+      const smp = track.samples[Math.floor(s / step) % track.samples.length]!;
+      advance(1000 / 30);
+      room.handle(a, { t: 'state', s: { ...STATE, p: [smp.x, 0.7, smp.z] } });
+      room.handle(g, { t: 'ping', clientTime: 0 });
+      room.update();
+    }
+    advance(RACE.finishGraceMs + 10);
+    room.handle(g, { t: 'ping', clientTime: 0 });
+    room.update();
+    expect(races).toHaveLength(1);
+    const race = races[0]!;
+    expect(race).toMatchObject({ trackId: APEX_PARK.id, laps: 1 });
+    expect(race.results).toEqual([
+      expect.objectContaining({ profileId: 1, position: 1, dnf: false, points: RACE.points[0], fastestLap: true, laps: 1, grid: 1 }),
+      expect.objectContaining({ profileId: null, position: 2, dnf: true, points: 0 }),
+    ]);
+    expect(race.lapTimes).toHaveLength(1);
+    expect(race.lapTimes[0]).toMatchObject({ profileId: 1, lap: 1 });
+    expect(race.lapTimes[0]!.sectors).toHaveLength(3);
   });
 });

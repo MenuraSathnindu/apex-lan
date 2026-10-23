@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { RaceInput } from '../db/database.ts';
 import { builtInTracks, type TrackProvider } from '../tracks/catalog.ts';
 import {
   APEX_PARK,
@@ -13,6 +14,7 @@ import {
   COUNTDOWN_MS,
   MAX_PLAYERS,
   REJOIN_GRACE_MS,
+  defaultTag,
   isCompound,
   isTyreWearSetting,
   isValidCarState,
@@ -25,6 +27,7 @@ import {
   type Compound,
   type Livery,
   type PlayerInfo,
+  type ProfileSummary,
   type RaceState,
   type S2C,
   type TrackDef,
@@ -46,6 +49,8 @@ interface Player {
   color: number;
   livery: Livery;
   tyre: Compound;
+  /** Logged-in profile (null = guest). */
+  profile: ProfileSummary | null;
   slot: number;
   joinedAt: number;
   conn: Connection | null;
@@ -58,11 +63,24 @@ interface Player {
   sentTs: number;
 }
 
+/** Player profiles, as far as the room needs them (the database in production). */
+export interface ProfileDirectory {
+  byToken(token: string): ProfileSummary | null;
+  saveLivery(profileId: number, livery: Livery): void;
+}
+
+/** Where finished races go (the database in production). */
+export interface ResultsSink {
+  recordRace(race: RaceInput): void;
+}
+
 export interface RoomOptions {
   now?: () => number;
   log?: (msg: string) => void;
   /** Selectable tracks (default: the built-in ones). */
   tracks?: TrackProvider;
+  profiles?: ProfileDirectory;
+  results?: ResultsSink;
 }
 
 /**
@@ -82,11 +100,17 @@ export class Room {
   private gates!: Gate[];
   private tracker: RaceTracker | null = null;
   private updates = 0;
+  private readonly profiles: ProfileDirectory | null;
+  private readonly results: ResultsSink | null;
+  /** Who raced as which profile, frozen at the start (logging in mid-race doesn't move results). */
+  private raceEntrants = new Map<number, { profileId: number | null; grid: number }>();
 
   constructor(opts: RoomOptions = {}) {
     this.now = opts.now ?? Date.now;
     this.log = opts.log ?? (() => {});
     this.tracks = opts.tracks ?? builtInTracks();
+    this.profiles = opts.profiles ?? null;
+    this.results = opts.results ?? null;
     this.useTrack(APEX_PARK);
   }
 
@@ -129,6 +153,10 @@ export class Room {
         this.broadcast({ t: 'race', race: this.race });
         break;
       }
+      case 'auth':
+        this.authenticate(player, msg.token);
+        this.broadcastRoster();
+        break;
       case 'setTrack': {
         if (player.id !== this.hostId || this.race.phase !== 'lobby' || typeof msg.trackId !== 'string') return;
         const def = this.tracks.get(msg.trackId);
@@ -147,8 +175,10 @@ export class Room {
       case 'start': {
         if (player.id !== this.hostId || this.race.phase !== 'lobby') return;
         const startsAt = this.now() + COUNTDOWN_MS;
-        const racers = this.connectedPlayers().map((p) => p.id);
+        const starters = this.connectedPlayers();
+        const racers = starters.map((p) => p.id);
         this.tracker = new RaceTracker(this.track, this.gates, racers, startsAt, this.race.laps);
+        this.raceEntrants = new Map(starters.map((p) => [p.id, { profileId: p.profile?.id ?? null, grid: p.slot + 1 }]));
         this.race = { ...this.race, phase: 'countdown', raceId: this.race.raceId + 1, startsAt, finishDeadline: 0 };
         this.log(`race ${this.race.raceId} starting: ${racers.length} players, ${this.race.laps} laps`);
         this.broadcast({ t: 'race', race: this.race });
@@ -226,6 +256,7 @@ export class Room {
         this.race = { ...this.race, phase: 'results' };
         const standings = this.tracker.standings();
         this.log(`race ${this.race.raceId} over — winner #${standings[0]?.id}`);
+        this.recordResults();
         this.broadcast({ t: 'race', race: this.race });
         this.broadcast({ t: 'standings', standings });
       } else if (++this.updates % STANDINGS_EVERY === 0) {
@@ -276,6 +307,7 @@ export class Room {
         name: `Player ${this.nextId - 1}`,
         color: 0,
         livery: presetLivery(0),
+        profile: null,
         tyre: isCompound(msg.tyre) ? msg.tyre : 'medium',
         slot,
         joinedAt: now,
@@ -291,6 +323,7 @@ export class Room {
       this.setProfile(player, msg.name, msg.color, msg.livery);
       // A newcomer without a saved livery gets their colour's preset (including its number).
       if (msg.livery === undefined) player.livery = presetLivery(player.color);
+      if (msg.token) this.authenticate(player, msg.token, conn);
       this.log(`${player.name} (#${player.id}) joined in slot ${slot + 1}`);
     }
 
@@ -308,8 +341,85 @@ export class Room {
     this.broadcastRoster();
   }
 
+  /**
+   * Logs a player in to a profile (their name, tag, photo and livery come from it) or back out
+   * to a guest. A profile can only drive one car at a time.
+   */
+  private authenticate(player: Player, token: string | null, conn = player.conn) {
+    const reply = (ok: boolean, reason?: string) => conn?.send({ t: 'auth', ok, profile: player.profile, ...(reason ? { reason } : {}) });
+    if (token === null) {
+      player.profile = null;
+      return reply(true);
+    }
+    const profile = typeof token === 'string' && this.profiles ? this.profiles.byToken(token) : null;
+    if (!profile) return reply(false, 'unknown login — log in again');
+    if ([...this.players.values()].some((p) => p !== player && p.conn && p.profile?.id === profile.id)) {
+      return reply(false, `${profile.name} is already driving in this room`);
+    }
+    player.profile = profile;
+    player.name = profile.name;
+    player.livery = { ...profile.livery };
+    this.log(`#${player.id} is ${profile.name}`);
+    reply(true);
+  }
+
+  /** A profile changed elsewhere (photo, tag, livery): update whoever is using it. */
+  profileUpdated(profile: ProfileSummary): void {
+    let any = false;
+    for (const p of this.players.values()) {
+      if (p.profile?.id !== profile.id) continue;
+      p.profile = profile;
+      p.name = profile.name;
+      p.livery = { ...profile.livery };
+      any = true;
+    }
+    if (any) this.broadcastRoster();
+  }
+
+  /** Hands the finished race to the results sink: every starter's place, every profiled lap. */
+  private recordResults() {
+    if (!this.results || !this.tracker) return;
+    const standings = this.tracker.standings();
+    const fastest = this.tracker.fastestLap();
+    const starters = standings.length;
+    const competitive = starters >= 2;
+    const race: RaceInput = {
+      trackId: this.race.trackId,
+      kind: 'race',
+      laps: this.race.laps,
+      finishedAt: this.now(),
+      results: standings.map((s) => {
+        const entrant = this.raceEntrants.get(s.id);
+        return {
+          profileId: entrant?.profileId ?? null,
+          position: s.pos,
+          grid: entrant?.grid ?? null,
+          dnf: s.dnf,
+          laps: s.laps,
+          totalMs: s.finishTime,
+          bestLapMs: s.bestLap,
+          fastestLap: fastest?.id === s.id,
+          // No qualifying yet: poles are awarded once grids come from qualifying (championship mode).
+          pole: false,
+          points: competitive && !s.dnf ? (RACE.points[s.pos - 1] ?? 0) : 0,
+        };
+      }),
+      lapTimes: standings.flatMap((s) => {
+        const profileId = this.raceEntrants.get(s.id)?.profileId;
+        if (!profileId) return [];
+        return this.tracker!.lapsOf(s.id).map((l) => ({ profileId, lap: l.lap, timeMs: l.time, sectors: l.sectors }));
+      }),
+    };
+    try {
+      this.results.recordRace(race);
+    } catch (err) {
+      this.log(`could not record race results: ${(err as Error).message}`);
+    }
+  }
+
   private setProfile(player: Player, name: unknown, color: unknown, livery: unknown) {
-    player.name = sanitizeName(name) ?? player.name;
+    // A profile's name is fixed (it's the login); guests can rename themselves.
+    if (!player.profile) player.name = sanitizeName(name) ?? player.name;
     const prevColor = player.color;
     const wanted = typeof color === 'number' && Number.isInteger(color) && color >= 0 && color < CAR_COLORS.length ? color : player.color;
     const taken = new Set([...this.players.values()].filter((p) => p !== player).map((p) => p.color));
@@ -321,6 +431,10 @@ export class Room {
     // No (valid) livery sent: keep ours, or take the preset of a newly assigned colour.
     const fallback = player.color !== prevColor ? { ...presetLivery(player.color), number: player.livery.number } : player.livery;
     player.livery = livery === undefined ? fallback : sanitizeLivery(livery, fallback);
+    if (player.profile && JSON.stringify(player.livery) !== JSON.stringify(player.profile.livery)) {
+      player.profile = { ...player.profile, livery: { ...player.livery } };
+      this.profiles?.saveLivery(player.profile.id, player.livery);
+    }
   }
 
   private freeSlot(): number {
@@ -371,7 +485,7 @@ export class Room {
   private roster(): PlayerInfo[] {
     return [...this.players.values()]
       .sort((a, b) => a.slot - b.slot)
-      .map((p) => ({ id: p.id, name: p.name, color: p.color, slot: p.slot, connected: !!p.conn, livery: p.livery, tyre: p.tyre }));
+      .map((p) => ({ id: p.id, name: p.name, color: p.color, slot: p.slot, connected: !!p.conn, livery: p.livery, tyre: p.tyre, profileId: p.profile?.id ?? null, tag: p.profile?.tag ?? defaultTag(p.name), photo: p.profile?.photo ?? null }));
   }
 
   private broadcastRoster() {

@@ -2,6 +2,7 @@
 // reports its state; the server owns the room (players, host, race phase) and relays car states.
 
 import type { Livery } from '../livery.ts';
+import type { ProfileSummary } from './api.ts';
 import type { Compound, TyreWearSetting } from '../physics/tyres.ts';
 import type { DetectionEvent, LapEvent, Standing } from '../race/raceTracker.ts';
 
@@ -19,6 +20,12 @@ export interface PlayerInfo {
   livery: Livery;
   /** Tyre compound for the next/current race. */
   tyre: Compound;
+  /** Logged-in profile, or null for a guest. */
+  profileId: number | null;
+  /** Three letters for the timing tower (from the profile, or made from the name). */
+  tag: string;
+  /** Profile photo URL, or null. */
+  photo: string | null;
 }
 
 export interface RaceState {
@@ -65,13 +72,15 @@ export interface CarSnapshot extends CarState {
 
 /** Client -> Server messages. */
 export type C2S =
-  | { t: 'hello'; sessionId: string | null; name: string; color: number; livery?: Livery; tyre?: Compound }
+  | { t: 'hello'; sessionId: string | null; name: string; color: number; livery?: Livery; tyre?: Compound; token?: string | null }
   | { t: 'profile'; name: string; color: number; livery?: Livery; tyre?: Compound }
   | { t: 'state'; s: CarState }
   | { t: 'start' }
   | { t: 'setLaps'; laps: number }
   | { t: 'setTyreWear'; wear: TyreWearSetting }
   | { t: 'setTrack'; trackId: string }
+  /** Log this connection in to a profile (login token), or back out to guest (null). */
+  | { t: 'auth'; token: string | null }
   | { t: 'endRace' }
   | { t: 'ping'; clientTime: number };
 
@@ -97,4 +106,6 @@ export type S2C =
   /** A racer crossed the overtake detection point: their ERS lap restarts, and overtake mode is on or off. */
   | { t: 'detect'; e: DetectionEvent }
   | { t: 'pong'; clientTime: number; serverTime: number }
-  | { t: 'full' };
+  | { t: 'full' }
+  /** Result of logging in on the socket (hello with a token, or `auth`). */
+  | { t: 'auth'; ok: boolean; profile: ProfileSummary | null; reason?: string };
