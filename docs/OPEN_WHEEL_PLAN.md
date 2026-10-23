@@ -103,6 +103,11 @@ Do R1–R7 and R13 in **p8**, R8–R10 and R12 right before the feature that nee
   (harvested ≤ deployed + Δcharge); 8 players race with wings animating on remote cars.
 
 ### p10 — Real-track pipeline
+> **Status 2026-10-23:** done except elevation (both datasets are 2D). Sources chosen by the user:
+> TUMFTM racetrack-database (LGPL-3.0) preferred, Tomislav Bacinger's GeoJSON (MIT) otherwise and
+> as the geographic reference. 45 circuits generated, all lapped by the headless autopilot. Notes
+> per track: `tools/README.md` / the build report. Generator lives in `tools/`, not `scripts/`.
+
 - **Input:** `tracks/src/<id>.json` = centerline polyline (lat/lon or local x,z metres), optional
   elevation, per-point left/right width, sector split fractions, start index, pit entry/exit.
   Source options, in order of preference — **check each licence before committing data**:

@@ -61,7 +61,9 @@ apex-lan/
 │     │  ├─ testGround.ts    # phase 1 playground (used by vehicle tests)
 │     │  ├─ spline.ts        # centripetal Catmull-Rom, even arc-length samples (pos, tangent, normal, curvature)
 │     │  ├─ track.ts         # TrackDef → BuiltTrack: road/curb/line/barrier mesh data, barrier segments, spawn grid
-│     │  ├─ tracks.ts        # concrete track definitions (APEX_PARK, with aero zones + detection point)
+│     │  ├─ tracks.ts        # built-in track (APEX_PARK)
+│     │  ├─ trackFile.ts     # TrackDef / TrackFile JSON schema, parseTrackFile, index entries
+│     │  ├─ centerline.ts    # resample / smooth closed centrelines with widths
 │     │  ├─ zones.ts         # inZone(), distanceFromStart()
 │     │  └─ validate.ts      # min corner radius / self-separation checks (used by tests)
 │     ├─ race/
@@ -326,15 +328,29 @@ CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking),
 ### 4.4 Track physics
 - Track geometry is generated **deterministically from a `TrackDef`** in `/shared`, so server and
   client build identical colliders from the same data, with no collider assets to keep in sync.
-- Layers (flat circuit): grass ground cuboid top at y = 0, road `trimesh` at +2 cm, curbs `trimesh`
-  at +3.5 cm. Wheel rays hit the highest surface. Barriers are a chain of cuboids (4 m segments,
-  slightly overlapping); the car body has CCD so it can't tunnel through them.
+- **Generated circuits** (`tools/build-tracks.ts`, see `tools/README.md`): TUMFTM racetrack-database
+  (LGPL-3.0, widths) aligned onto Tomislav Bacinger's lat/lon outlines (MIT, start line, published
+  length), resampled to a 5 m centreline with left/right widths, zones, detection point, sectors,
+  checkpoints, grid and pit lane → `client/public/tracks/<id>.json` + `index.json`. The server reads
+  them through `TrackProvider` (`server/src/tracks/catalog.ts`); clients fetch the same files.
+- **Runtime generator** (`buildTrack`, all numbers in `TRACK_STYLE`): 2 m samples; variable-width road
+  with metre UVs; white edge lines; kerbs where the radius < 110 m; gravel traps outside corners
+  tighter than 160 m and grass elsewhere (permanent circuits) or a paved strip and concrete walls
+  (street circuits); armco elsewhere. Each barrier offset is limited by the corner radius on the
+  inside and by other parts of the track (barriers meet halfway; none where roads cross — Suzuka's
+  bridge is a flat crossing with the later branch lifted 3 cm so the roads don't z-fight). Pit lane
+  beside the start straight with a pit wall and the barrier behind it; placements for the pit
+  building and grandstands.
+- Layers (flat circuit): grass ground cuboid top at y = 0, gravel `trimesh` at +1.2 cm, paved run-off
+  +1.7 cm, pit lane +1.8 cm, road +2 cm, curbs +3.5 cm. Wheel rays hit the highest surface. Barriers
+  are a chain of cuboids (4 m segments, slightly overlapping, per-segment height/thickness); the car
+  body has CCD so it can't tunnel through them.
 - **Surfaces:** Rapier's vehicle ignores collider friction, so colliders are tagged
   (`tagSurface`) and `stepVehicle` reads each wheel's ground collider: `CAR.surfaces` scales
-  `frictionSlip` and adds rolling drag (grass = 55% grip + heavy drag).
+  `frictionSlip` and adds rolling drag (grass = 55% grip + heavy drag, gravel = 45% + very heavy).
 - Checkpoints are **geometry, not physics sensors**, so the server can evaluate them without
   a physics world: `buildCheckpoints()` places a gate (a line across the full width up to the
-  barriers) every ~100 m, gate 0 on the start line. `crossesGate()` checks that the segment
+  barriers) at the track's own checkpoint list, or every ~100 m, gate 0 on the start line. `crossesGate()` checks that the segment
   between two consecutive positions crosses the line in the driving direction. See §3.8.
 
 ### 4.5 Collision groups

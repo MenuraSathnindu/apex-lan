@@ -17,7 +17,10 @@ phase. If a decision changes, update that doc in the same change.
 > [`docs/OPEN_WHEEL_PLAN.md`](docs/OPEN_WHEEL_PLAN.md). **Phase 9 open-wheel car done ahead of 8 (2026-10-23,
 > at the user's request)**: retune, active aero, ERS + server-granted overtake, livery editor, tyre compounds,
 > paddle-shift sounds, power HUD, procedural car; waiting on the user's `openwheel.glb`
-> ([`docs/OPENWHEEL_MODEL.md`](docs/OPENWHEEL_MODEL.md)). **Next: Phase 8 — foundations** (refactors R2–R7/R13,
+> ([`docs/OPENWHEEL_MODEL.md`](docs/OPENWHEEL_MODEL.md)). **Phase 10 real-track pipeline done (2026-10-23)**: 45 circuits
+> generated from open data (`npm run tracks`), runtime generator (kerbs, gravel, armco/walls, pit lane, stands),
+> track select screen, every track lapped by the headless autopilot (`npm run tracks:check`). Elevation not done
+> (the datasets are 2D). **Next: Phase 8 — foundations** (refactors R2–R7/R13,
 > binary codec, trademark lint). Phase 6 leftovers: visual body roll, real tree models.
 > Update this line when a phase's exit criteria are met.
 
@@ -49,6 +52,8 @@ no series names/abbreviations, no real team/driver/car-model names, no logos, li
 | `npm test` | Vitest (shared + server) |
 | `npm run handling` | headless driving scenarios → 0–100, braking, cornering g, drift angle, rollover checks for the current tuning |
 | `npm run bots -- 7 [ws-url]` | fake players that join, wait on the grid and lap the track during races (default `ws://localhost:3000/ws`). Fill an 8-player room on your own |
+| `npm run tracks [-- --all \| <ids>]` | regenerate circuits from the datasets in `tools/data/` (clone them first: `tools/README.md`) into `client/public/tracks/`; writes SVG previews to `tools/out/` |
+| `npm run tracks:check [-- <ids>]` | drive one lap of every generated track with the physics autopilot; the server's lap counter must count it (all checkpoints) |
 | `npm run assets` | downloads the optional HDRI / textures / car GLB into `client/public/` (git-ignored). See `docs/ASSETS.md` |
 
 Run `npm run typecheck` and `npm test` before calling any task done. After touching car tuning or vehicle code, also run `npm run handling`.
@@ -73,14 +78,14 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 - **Liveries** are data (`shared/src/livery.ts`: 3 colours + number, fictional presets per grid colour), validated by the server (`sanitizeLivery`) and painted on a canvas (`liveryTexture.ts`) projected from above. Never ship real team liveries or numbers as presets.
 - **Open-wheel sim state** lives on `Vehicle` and is stepped deterministically inside `stepVehicle`: `aero` (wing blend; needs `inAeroZone` set by the client before the step), `ers` (battery; `overtake` is set only from the server's `detect` message), `tyres` (compound + wear; fitted on the grid with `fitTyres`).
 - **Every asset is optional.** Missing files → procedural fallback + a `[assets]` console warning. Keep it that way: the game must run straight after `git clone && npm install`.
-- Tracks are pure data (`shared/src/track/tracks.ts`) → `buildTrack()` → mesh data for the client and colliders for physics. Validate new layouts with `track.test.ts` (corner radius, self-separation).
+- Tracks are pure data (`TrackDef`, `shared/src/track/trackFile.ts`): a 5 m centreline of `[x, z, leftWidth, rightWidth]` starting on the start line in racing order, plus sectors, checkpoints, zones, detection point, pit lane and grid. `buildTrack()` turns it into everything else (2 m samples, meshes, colliders, barriers, placements), identically on client and server. Built-in: Apex Park (`tracks.ts`); generated: `client/public/tracks/<id>.json`. Every track must pass `trackContract` (`trackContract.testutil.ts`) and `npm run tracks:check`.
 - Race rules/tuning: `RACE` in `tuning.ts` (laps, checkpoint spacing, finish grace, respawn timers). Checkpoints are invisible gates every ~100 m (`buildCheckpoints`), gate 0 = start line; cars start behind it, so lap 1 includes the run from the grid.
 - Client race helpers (`client/src/game/raceController.ts`): wrong-way, auto-respawn (stuck on grass / past barriers / flipped) and R = respawn at the last checkpoint, using the server's `nextGate` as the truth.
 - Sound & effects read the sim through `shared/src/physics/vehicleFx.ts` (tyre slip, chassis contacts) and `drivetrain.ts` (gear/rpm), gathered per tick by `client/src/game/localCarFx.ts`. They never change the simulation; the gearbox doesn't affect handling.
 - Audio: everything goes through `AudioSystem` (buses: engine / effects / ui → master → limiter). Sounds are procedural (`audio/synth.ts`); files in `client/public/sounds/` are optional overrides (`AUDIO.files`). Per-car loops live in `CarVoice`.
 - Effects (`render/effects/`) are pooled, single-draw-call systems with fixed buffers. Keep it that way (no per-particle objects); budgets scale with `QUALITY.particles`.
 - Player preferences (volumes, camera, key bindings, FPS counter) go through `SettingsStore` (`game/userSettings.ts`, `localStorage` `apex.settings`, sanitized on load). Graphics quality keeps its own key (`apex.graphics`). Driving keys come from `input/bindings.ts`; never hard-code key codes elsewhere.
-- Surfaces: tag colliders with `tagSurface(world, collider, 'asphalt' | 'curb' | 'grass')`. `stepVehicle` scales grip/drag per wheel from `CAR.surfaces`.
+- Surfaces: tag colliders with `tagSurface(world, collider, 'asphalt' | 'curb' | 'grass' | 'gravel')`. Gravel and grass count as off-track for effects, stuck detection and sounds. `stepVehicle` scales grip/drag per wheel from `CAR.surfaces`.
 - Colour pipeline: renderer uses `NoToneMapping`; ACES Filmic happens in the post chain (`render/post.ts`), output sRGB. Don't set `renderer.toneMapping`.
 - Files: `camelCase.ts`; types/interfaces `PascalCase`; constants `SCREAMING_SNAKE_CASE`.
 - Prefer plain functions + data objects over class hierarchies; classes are fine for stateful systems (e.g. `Simulation`, `Room`, `CarView`).
@@ -93,7 +98,7 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 - **Server persistence** lives only in `server/src/db/` (SQLite, numbered migrations, never edit an applied one). `Room`/`SessionRunner` depend on `Store` interfaces injected at construction (tests use in-memory fakes). Data dir `data/` (`APEX_DATA_DIR`) is git-ignored. Career stats are SQL queries over `race_result`, not stored counters; result inserts are idempotent (`UNIQUE(session_id, profile_id)`).
 - **Identity:** `sessionId` (per tab) = rejoin; `profileId` + secret `profileToken` (localStorage; server stores only a hash) = who you are. Championship seats are keyed by `profileId`.
 - **HTTP API** goes through `server/src/http/router.ts` (body size limits, JSON helpers). WebSocket stays for live race data; uploads (profile photo: ≤ 64 KB, JPEG/PNG/WebP by magic bytes, never SVG, `nosniff`) use HTTP, not WS.
-- **Tracks:** real circuits are generated offline by `scripts/buildTrack.ts` into committed `TrackDef` JSON (`npm run tracks`); runtime code only reads `TrackDef`. Record the data source + licence of every circuit in `CREDITS.md`. Select tracks by id (`TRACKS[id]`), never `APEX_PARK` directly.
+- **Tracks:** real circuits are generated offline by `tools/build-tracks.ts` (config + names in `tools/tracks.config.ts`) into committed JSON; runtime code only reads `TrackDef`. The datasets' licences and `ATTRIBUTION.md` live next to the JSON, and each file has a `source` block. Look at the `tools/out/<id>.svg` preview before committing a track: start line (`startShift`) and direction (`reverse`) aren't in the data. Select tracks by id (room `trackId`, `TrackProvider`), never `APEX_PARK` directly. Track style knobs (kerbs, run-off, barriers, pit lane, stands) are `TRACK_STYLE` in `tuning.ts`.
 - **Sessions:** a `Session` has `kind` (`free | qualifying | sprint | race`), `trackId`, rules and a points table; the server's `RaceTracker` classifies per kind. Championship state is persisted after every session.
 - **Broadcast UI** (timing tower, sector bar, lights) is DOM/CSS only — no new full-screen GPU passes; update ≤ 5 Hz from server standings. Start-light delay is seeded from `raceId` so all clients agree.
 - Commits: small, one concern each, message prefixed with phase, e.g. `p1: add handbrake drift`.
@@ -108,7 +113,7 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 7. **Audio & polish** ✅ — engine/tyre/impact audio, speedometer/gear/minimap HUD, pause menu (audio, graphics, key bindings, camera)
 8. **Foundations & robustness** — refactors (car specs registry, `Session` extracted from `Room`, `TrackDef` v2, HTTP router, `Store` interfaces, split `tuning.ts`), binary codec + quantization + `PROTOCOL_VERSION`, remove the real-marque car model, trademark lint + CI, 2nd track
 9. **Open-wheel car** — `CAR_SPECS['open-wheel']`, procedural model with animated wings, Active Aero (`corner`/`straight`), ERS battery, Boost (server-granted)
-10. **Real-track pipeline** — offline `scripts/buildTrack.ts` (centerline → `TrackDef` JSON), elevation, variable width, sectors, pit lane, aero/detection zones, 3 circuits
+10. **Real-track pipeline** ✅ (except elevation) — `tools/build-tracks.ts` (TUMFTM + Bacinger → `TrackDef` JSON), variable width, sectors, pit lane, aero/detection zones, 45 circuits, track select
 11. **Player profiles** — SQLite (`node:sqlite`) on the host, profile token identity, photo upload, career stats
 12. **Championship** — qualifying / sprint / race weekends, points, driver + team standings, save/resume keyed by `profileId`
 13. **Broadcast presentation** — start lights, timing tower, sector UI, banners, onboard cam (DOM overlays only)
