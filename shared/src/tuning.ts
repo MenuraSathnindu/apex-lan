@@ -181,8 +181,6 @@ export const CAR = {
       /** Extra deploy power on top of deployPower, and extra energy allowed that lap. */
       extraPower: 150_000,
       extraLapEnergy: 1_200_000,
-      /** Gap to the car ahead (s) at the detection point that unlocks it. */
-      maxGap: 1.0,
     },
   },
 
@@ -437,6 +435,8 @@ export const RACE = {
   wrongWaySeconds: 1.2,
   /** Respawned cars are placed this far past the checkpoint gate (m). */
   respawnAhead: 3,
+  /** Overtake mode unlocks if the car ahead crossed the detection point within this many seconds. */
+  overtakeMaxGap: 1.0,
 };
 
 // ---------------------------------------------------------------------------

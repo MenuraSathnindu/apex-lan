@@ -1,7 +1,7 @@
 // Wire protocol. Trust model (LAN, decided 2026-10-17): each client simulates its own car and
 // reports its state; the server owns the room (players, host, race phase) and relays car states.
 
-import type { LapEvent, Standing } from '../race/raceTracker.ts';
+import type { DetectionEvent, LapEvent, Standing } from '../race/raceTracker.ts';
 
 export type RacePhase = 'lobby' | 'countdown' | 'racing' | 'results';
 
@@ -82,5 +82,7 @@ export type S2C =
   /** Live ranking (5 Hz while racing; final once results are in). */
   | { t: 'standings'; standings: Standing[] }
   | { t: 'lap'; e: LapEvent }
+  /** A racer crossed the overtake detection point: their ERS lap restarts, and overtake mode is on or off. */
+  | { t: 'detect'; e: DetectionEvent }
   | { t: 'pong'; clientTime: number; serverTime: number }
   | { t: 'full' };

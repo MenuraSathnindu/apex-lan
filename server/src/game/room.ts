@@ -103,6 +103,7 @@ export class Room {
         player.stateTs = this.now();
         if (this.tracker && (this.race.phase === 'countdown' || this.race.phase === 'racing')) {
           for (const e of this.tracker.onState(player.id, msg.s.p[0], msg.s.p[2], player.stateTs)) this.onLap(e);
+          for (const e of this.tracker.takeDetections()) this.broadcast({ t: 'detect', e });
         }
         break;
       case 'setLaps': {

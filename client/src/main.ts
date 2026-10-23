@@ -16,6 +16,7 @@ import {
   createWorld,
   gearLabel,
   initRapier,
+  newErsLap,
   packCarState,
   readWheelStates,
   refillErs,
@@ -205,6 +206,7 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
   if (msg.t === 'race') {
     if (msg.race.phase === 'countdown' && msg.race.raceId !== prevRaceId) {
       pending = { kind: 'grid' };
+      session.lastDetection = null;
       effects.clear();
     }
     if (msg.race.phase === 'lobby') pending = { kind: 'grid' };
@@ -279,6 +281,13 @@ startLoop({
       // During a race, R puts you back at the last checkpoint instead of resetting in place.
       raceController.respawn('manual');
       lastInput = { ...lastInput, reset: false };
+    }
+    // Overtake detection point: our ERS lap restarts, overtake mode is switched on or off.
+    for (const d of session.detections.splice(0)) {
+      if (d.id !== session.myId) continue;
+      newErsLap(car.ers);
+      car.ers.overtake = d.overtake;
+      session.lastDetection = d;
     }
     raceController.locate();
     stepVehicle(car, lastInput, FIXED_DT);

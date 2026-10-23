@@ -1,6 +1,6 @@
 import type { BuiltTrack } from '../track/track.ts';
 import { RACE } from '../tuning.ts';
-import { crossesGate, nearestSample, type Gate } from './checkpoints.ts';
+import { crossesGate, gateAtDistance, nearestSample, type Gate } from './checkpoints.ts';
 
 /** One racer's standing, as broadcast to clients. Times are in ms. */
 export interface Standing {
@@ -32,6 +32,17 @@ export interface LapEvent {
   finished: boolean;
 }
 
+/**
+ * A racer crossed the overtake detection point. `overtake` is true when the car directly ahead
+ * (the last one to cross before them) was within RACE gap — extra ERS energy for the next lap.
+ */
+export interface DetectionEvent {
+  id: number;
+  /** Seconds behind the car ahead (null if nobody crossed before them). */
+  gap: number | null;
+  overtake: boolean;
+}
+
 interface Racer {
   id: number;
   x: number;
@@ -45,6 +56,8 @@ interface Racer {
   lastLap: number | null;
   bestLap: number | null;
   finishTime: number | null;
+  /** How many times they've crossed the detection point. */
+  detections: number;
 }
 
 const wrap = (d: number, len: number) => ((((d + len / 2) % len) + len) % len) - len / 2;
@@ -62,6 +75,10 @@ export class RaceTracker {
   private firstFinishAt: number | null = null;
   private raceBest: number | null = null;
   private final = false;
+  private readonly detectionGate: Gate | null;
+  /** crossings[k] = server times of everyone's (k+1)-th detection crossing, in order. */
+  private readonly crossings: number[][] = [];
+  private pendingDetections: DetectionEvent[] = [];
 
   constructor(
     private readonly track: BuiltTrack,
@@ -70,6 +87,8 @@ export class RaceTracker {
     readonly startsAt: number,
     readonly laps: number,
   ) {
+    const dp = track.def.detectionPoint;
+    this.detectionGate = dp === undefined ? null : gateAtDistance(track, dp);
     for (const id of participants) {
       this.racers.set(id, {
         id,
@@ -84,6 +103,7 @@ export class RaceTracker {
         lastLap: null,
         bestLap: null,
         finishTime: null,
+        detections: 0,
       });
     }
   }
@@ -107,12 +127,30 @@ export class RaceTracker {
         if (r.nextGate === 0) events.push(this.completeLap(r, ts));
         r.nextGate = (r.nextGate + 1) % this.gates.length;
       }
+      if (plausible && this.detectionGate && crossesGate(this.detectionGate, r.x, r.z, x, z)) this.onDetection(r, ts);
     }
     r.x = x;
     r.z = z;
     r.ts = ts;
     r.hasPos = true;
     return events;
+  }
+
+  private onDetection(r: Racer, ts: number): void {
+    const times = (this.crossings[r.detections] ??= []);
+    // The car ahead is whoever crossed this detection point (same lap) last before us.
+    const ahead = times.length ? times[times.length - 1]! : null;
+    const gap = ahead === null ? null : (ts - ahead) / 1000;
+    times.push(ts);
+    r.detections++;
+    this.pendingDetections.push({ id: r.id, gap, overtake: gap !== null && gap <= RACE.overtakeMaxGap });
+  }
+
+  /** Detection-point crossings since the last call (for the room to announce). */
+  takeDetections(): DetectionEvent[] {
+    const out = this.pendingDetections;
+    this.pendingDetections = [];
+    return out;
   }
 
   private completeLap(r: Racer, ts: number): LapEvent {

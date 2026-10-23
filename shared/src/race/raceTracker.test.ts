@@ -115,3 +115,46 @@ describe('RaceTracker', () => {
     expect(tracker.standings().map((s) => s.id)).toEqual([1]);
   });
 });
+
+describe('overtake detection point', () => {
+  const toDetection = 20 + (APEX_PARK.detectionPoint ?? 0) + 30;
+  const run = (offsetMs: number) => {
+    const tracker = new RaceTracker(track, gates, [1, 2], START, 3);
+    drive(tracker, 1, gridS, toDetection, 40, START);
+    drive(tracker, 2, gridS, toDetection, 40, START + offsetMs);
+    return tracker.takeDetections();
+  };
+
+  it('announces each crossing; the first car has nobody ahead', () => {
+    const [first, second] = run(600);
+    expect(first).toMatchObject({ id: 1, gap: null, overtake: false });
+    expect(second!.id).toBe(2);
+  });
+
+  it('unlocks overtake mode when the car ahead is within the gap, and not when further back', () => {
+    const near = run(600)[1]!;
+    expect(near.gap).toBeCloseTo(0.6, 1);
+    expect(near.overtake).toBe(true);
+    const far = run(1800)[1]!;
+    expect(far.gap).toBeCloseTo(1.8, 1);
+    expect(far.overtake).toBe(false);
+  });
+
+  it('ignores crossings before GO and teleports', () => {
+    const tracker = new RaceTracker(track, gates, [1], START, 3);
+    drive(tracker, 1, gridS, toDetection, 40, START - 60_000);
+    expect(tracker.takeDetections()).toEqual([]);
+  });
+
+  it('compares like with like: the second crossing of a lead car does not count as "ahead" for a lap-down car', () => {
+    const tracker = new RaceTracker(track, gates, [1, 2], START, 5);
+    // Car 1 completes a full extra lap while car 2 is still on its first.
+    drive(tracker, 1, gridS, toDetection + track.length, 40, START);
+    drive(tracker, 2, gridS, toDetection, 40, START + 200);
+    const events = tracker.takeDetections();
+    const car2 = events.find((e) => e.id === 2)!;
+    // Car 2's first crossing compares with car 1's FIRST crossing (0.2 s ahead), not its second.
+    expect(car2.gap).toBeCloseTo(0.2, 1);
+  });
+});
+

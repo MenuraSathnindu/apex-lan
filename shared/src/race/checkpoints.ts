@@ -20,6 +20,17 @@ export interface Gate {
   s: number;
 }
 
+/** A gate across the track `distance` metres past the start line (wraps), e.g. the overtake detection point. */
+export function gateAtDistance(track: BuiltTrack, distance: number, index = -1): Gate {
+  const { samples, startIndex, def } = track;
+  const n = samples.length;
+  const step = samples[1]!.s;
+  const d = ((distance % track.length) + track.length) % track.length;
+  const smp = samples[(startIndex + Math.round(d / step)) % n]!;
+  const halfWidth = def.roadWidth / 2 + def.curbWidth + def.runoff + def.barrierThickness;
+  return { index, x: smp.x, z: smp.z, tx: smp.tx, tz: smp.tz, nx: smp.nx, nz: smp.nz, halfWidth, s: d };
+}
+
 /** Gates every ~`spacing` m, gate 0 on the start/finish line. */
 export function buildCheckpoints(track: BuiltTrack, spacing: number = RACE.checkpointSpacing): Gate[] {
   const { samples, startIndex, def } = track;

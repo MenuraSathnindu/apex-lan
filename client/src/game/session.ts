@@ -1,4 +1,4 @@
-import { CAR_COLORS, NAME_MAX_LENGTH, RACE, type C2S, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
+import { CAR_COLORS, NAME_MAX_LENGTH, RACE, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
 
 const PROFILE_KEY = 'apex.profile';
 const SESSION_KEY = 'apex.session';
@@ -42,6 +42,10 @@ export class Session {
   standings: Standing[] = [];
   /** Lap events not yet shown by the HUD. */
   readonly lapEvents: LapEvent[] = [];
+  /** Overtake detection-point crossings not yet applied to the car. */
+  readonly detections: DetectionEvent[] = [];
+  /** Result of our own last detection-point crossing (gap to the car ahead, overtake on/off). */
+  lastDetection: DetectionEvent | null = null;
   profile: Profile = read<Profile>(() => localStorage, PROFILE_KEY) ?? { name: '', color: 0 };
   private sessionId: string | null = read<string>(() => sessionStorage, SESSION_KEY);
 
@@ -102,6 +106,10 @@ export class Session {
       case 'lap':
         this.lapEvents.push(msg.e);
         return true;
+      case 'detect':
+        this.detections.push(msg.e);
+        if (this.detections.length > 32) this.detections.shift();
+        return false;
       case 'full':
         this.full = true;
         return true;
