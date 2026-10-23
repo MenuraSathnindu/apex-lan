@@ -160,6 +160,20 @@ describe('Room sessions', () => {
     expect(done).toHaveLength(0);
   });
 
+  it('when the host leaves mid-session the next player becomes host and can end it; nothing is reported', () => {
+    const { room, join, idOf, go } = setup();
+    const a = join('Ann');
+    const b = join('Ben');
+    const done: SessionOutcome[] = [];
+    room.runSession({ session: race('race', 3), trackId: APEX_PARK.id, tyreWear: 'normal', entrants: [idOf(a), idOf(b)] }, (o) => done.push(o));
+    go();
+    room.disconnect(a);
+    expect(b.last('roster').hostId).toBe(idOf(b));
+    room.handle(b, { t: 'endRace' });
+    expect(b.last('race').race.phase).toBe('lobby');
+    expect(done).toHaveLength(0);
+  });
+
   it('refuses unknown tracks and a session while one is running', () => {
     const { room, join, idOf } = setup();
     const a = join('Ann');

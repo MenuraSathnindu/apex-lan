@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import type { ChampionshipStore } from '../db/championships.ts';
 import type { RaceInput } from '../db/database.ts';
+import { ChampionshipRunner, type ChampMessage } from './championshipRunner.ts';
 import { builtInTracks, type TrackProvider } from '../tracks/catalog.ts';
 import {
   APEX_PARK,
@@ -126,6 +128,8 @@ export interface RoomOptions {
   tracks?: TrackProvider;
   profiles?: ProfileDirectory;
   results?: ResultsSink;
+  /** Championship seasons (enables championship mode). */
+  championships?: ChampionshipStore;
 }
 
 /**
@@ -150,6 +154,8 @@ export class Room {
   /** Who raced as which profile, frozen at the start (logging in mid-race doesn't move results). */
   private raceEntrants = new Map<number, { profileId: number | null; grid: number }>();
   private running: RunningSession | null = null;
+  /** Championship mode, if a store was given. */
+  readonly championship: ChampionshipRunner | null;
 
   constructor(opts: RoomOptions = {}) {
     this.now = opts.now ?? Date.now;
@@ -158,6 +164,23 @@ export class Room {
     this.profiles = opts.profiles ?? null;
     this.results = opts.results ?? null;
     this.useTrack(APEX_PARK);
+    this.championship = opts.championships
+      ? new ChampionshipRunner(
+          {
+            runSession: (spec, onDone) => this.runSession(spec, onDone),
+            broadcast: (msg) => this.broadcast(msg),
+            sendTo: (id, msg) => this.players.get(id)?.conn?.send(msg),
+            notifyHost: (text) => this.players.get(this.hostId)?.conn?.send({ t: 'notice', text }),
+            isHost: (id) => id === this.hostId,
+            connectedProfiles: () => this.connectedPlayers().flatMap((p) => (p.profile ? [{ playerId: p.id, profile: p.profile }] : [])),
+            profileOf: (id) => this.players.get(id)?.profile ?? null,
+            now: () => this.now(),
+          },
+          opts.championships,
+          this.tracks,
+          (m) => this.log(m),
+        )
+      : null;
   }
 
   /** Feed every decoded message from a connection here (including before `hello`). */
@@ -174,6 +197,12 @@ export class Room {
       return;
     }
     if (!player) return; // must say hello first
+
+    if (msg.t.startsWith('champ')) {
+      if (this.championship) this.championship.handle(player.id, msg as ChampMessage);
+      else conn.send({ t: 'notice', text: 'Championships are not available on this host.' });
+      return;
+    }
 
     switch (msg.t) {
       case 'profile':
@@ -380,7 +409,8 @@ export class Room {
       race: this.race,
       resume: this.race.phase === 'lobby' ? null : player.state,
     });
-    if (this.tracker) conn.send({ t: 'standings', standings: this.tracker.standings() });
+    if (this.tracker) conn.send({ t: 'standings', standings: this.sessionStandings() });
+    if (this.championship?.current) conn.send({ t: 'champ', view: this.championship.current });
     this.broadcastRoster();
   }
 

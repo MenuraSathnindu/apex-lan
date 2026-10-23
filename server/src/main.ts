@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DEV_CLIENT_PORT, SERVER_PORT, SNAPSHOT_RATE, WS_PATH, decodeC2S, encode } from '@apex/shared';
+import { ChampionshipDb } from './db/championships.ts';
 import { PlayerDb } from './db/database.ts';
 import { Room, type Connection } from './game/room.ts';
 import { createApi } from './http/api.ts';
@@ -41,6 +42,7 @@ const room = new Room({
     saveLivery: (id, livery) => db.setLivery(id, livery),
   },
   results: { recordRace: (race) => db.recordRace(race) },
+  championships: new ChampionshipDb(db),
 });
 const api = createApi({ db, photosDir: join(dataDir, 'photos'), onProfileChanged: (p) => room.profileUpdated(p) });
 

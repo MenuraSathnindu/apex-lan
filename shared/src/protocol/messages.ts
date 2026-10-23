@@ -3,6 +3,7 @@
 
 import type { Livery } from '../livery.ts';
 import type { ProfileSummary } from './api.ts';
+import type { ChampionshipView, SeasonDraft, SeasonListItem } from '../championship/types.ts';
 import type { Compound, TyreWearSetting } from '../physics/tyres.ts';
 import type { DetectionEvent, LapEvent, Standing } from '../race/raceTracker.ts';
 import type { SessionInfo } from '../race/sessions.ts';
@@ -88,6 +89,18 @@ export type C2S =
   | { t: 'setTrack'; trackId: string }
   /** Log this connection in to a profile (login token), or back out to guest (null). */
   | { t: 'auth'; token: string | null }
+  // Championship (see server/src/game/championshipRunner.ts). Host-only ones are refused for others.
+  | { t: 'champList' }
+  | { t: 'champCreate'; draft: SeasonDraft }
+  | { t: 'champLoad'; id: number }
+  | { t: 'champClose' }
+  | { t: 'champEnter' }
+  | { t: 'champAddEntrant'; profileId: number }
+  | { t: 'champTeamCreate'; name: string; primary: number; secondary: number }
+  | { t: 'champTeamJoin'; teamId: number }
+  | { t: 'champTeamLeave' }
+  | { t: 'champMoveDriver'; profileId: number; teamId: number | null }
+  | { t: 'champStartSession' }
   | { t: 'endRace' }
   | { t: 'ping'; clientTime: number };
 
@@ -115,4 +128,9 @@ export type S2C =
   | { t: 'pong'; clientTime: number; serverTime: number }
   | { t: 'full' }
   /** Result of logging in on the socket (hello with a token, or `auth`). */
-  | { t: 'auth'; ok: boolean; profile: ProfileSummary | null; reason?: string };
+  | { t: 'auth'; ok: boolean; profile: ProfileSummary | null; reason?: string }
+  /** The season loaded in the room (null = none), whenever it changes. */
+  | { t: 'champ'; view: ChampionshipView | null }
+  | { t: 'champList'; seasons: SeasonListItem[] }
+  /** Something you asked for was refused (shown as a short message). */
+  | { t: 'notice'; text: string };
