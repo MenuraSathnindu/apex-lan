@@ -106,8 +106,9 @@ export function createOpenWheelCarModel(spec: CarSpec, livery: Livery): CarModel
   helmet.position.set(0, 0.27, -0.1);
   const halo = add(new THREE.TorusGeometry(0.3, 0.02, 8, 24, Math.PI), carbonMat);
   halo.position.set(0, 0.17, -0.05);
-  const pillar = box(0.04, 0.04, 0.7, 0, 0.35, 0.28, carbonMat);
-  pillar.rotation.x = -0.35;
+  // Centre pillar from the top of the hoop down to the front of the cockpit.
+  const pillar = box(0.04, 0.04, 0.57, 0, 0.335, 0.2, carbonMat);
+  pillar.rotation.x = 0.49;
 
   // Front wing: fixed main plane + a flap that turns about its leading edge.
   box(1.9, 0.025, 0.2, 0, floorY + 0.02, 2.75, carbonMat);

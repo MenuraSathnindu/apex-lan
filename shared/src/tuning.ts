@@ -352,8 +352,8 @@ export const LIVERY = {
   numbers: [
     { u: 0.34, v: 0.5, size: 0.3 },
     { u: 0.9, v: 0.5, size: 0.14 },
-    { u: 0.47, v: 0.14, size: 0.16 },
-    { u: 0.47, v: 0.86, size: 0.16 },
+    { u: 0.42, v: 0.26, size: 0.15 },
+    { u: 0.42, v: 0.74, size: 0.15 },
   ],
   /** Material finish of the painted body. */
   finish: { metalness: 0.15, roughness: 0.32, clearcoat: 1.0, clearcoatRoughness: 0.04 },

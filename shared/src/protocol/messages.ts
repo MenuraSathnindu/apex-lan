@@ -1,6 +1,7 @@
 // Wire protocol. Trust model (LAN, decided 2026-10-17): each client simulates its own car and
 // reports its state; the server owns the room (players, host, race phase) and relays car states.
 
+import type { Livery } from '../livery.ts';
 import type { DetectionEvent, LapEvent, Standing } from '../race/raceTracker.ts';
 
 export type RacePhase = 'lobby' | 'countdown' | 'racing' | 'results';
@@ -13,6 +14,8 @@ export interface PlayerInfo {
   /** Grid slot 0..MAX_PLAYERS-1 (also the spawn position in the lobby). */
   slot: number;
   connected: boolean;
+  /** Paint scheme and race number. */
+  livery: Livery;
 }
 
 export interface RaceState {
@@ -55,8 +58,8 @@ export interface CarSnapshot extends CarState {
 
 /** Client -> Server messages. */
 export type C2S =
-  | { t: 'hello'; sessionId: string | null; name: string; color: number }
-  | { t: 'profile'; name: string; color: number }
+  | { t: 'hello'; sessionId: string | null; name: string; color: number; livery?: Livery }
+  | { t: 'profile'; name: string; color: number; livery?: Livery }
   | { t: 'state'; s: CarState }
   | { t: 'start' }
   | { t: 'setLaps'; laps: number }

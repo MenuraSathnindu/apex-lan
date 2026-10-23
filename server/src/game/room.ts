@@ -11,10 +11,13 @@ import {
   MAX_PLAYERS,
   REJOIN_GRACE_MS,
   isValidCarState,
+  presetLivery,
+  sanitizeLivery,
   sanitizeName,
   type C2S,
   type CarSnapshot,
   type CarState,
+  type Livery,
   type PlayerInfo,
   type RaceState,
   type S2C,
@@ -35,6 +38,7 @@ interface Player {
   sessionId: string;
   name: string;
   color: number;
+  livery: Livery;
   slot: number;
   joinedAt: number;
   conn: Connection | null;
@@ -94,7 +98,7 @@ export class Room {
 
     switch (msg.t) {
       case 'profile':
-        this.setProfile(player, msg.name, msg.color);
+        this.setProfile(player, msg.name, msg.color, msg.livery);
         this.broadcastRoster();
         break;
       case 'state':
@@ -245,6 +249,7 @@ export class Room {
         sessionId: randomUUID(),
         name: `Player ${this.nextId - 1}`,
         color: 0,
+        livery: presetLivery(0),
         slot,
         joinedAt: now,
         conn,
@@ -256,7 +261,9 @@ export class Room {
       };
       this.players.set(player.id, player);
       this.byConn.set(conn, player);
-      this.setProfile(player, msg.name, msg.color);
+      this.setProfile(player, msg.name, msg.color, msg.livery);
+      // A newcomer without a saved livery gets their colour's preset (including its number).
+      if (msg.livery === undefined) player.livery = presetLivery(player.color);
       this.log(`${player.name} (#${player.id}) joined in slot ${slot + 1}`);
     }
 
@@ -274,8 +281,9 @@ export class Room {
     this.broadcastRoster();
   }
 
-  private setProfile(player: Player, name: unknown, color: unknown) {
+  private setProfile(player: Player, name: unknown, color: unknown, livery: unknown) {
     player.name = sanitizeName(name) ?? player.name;
+    const prevColor = player.color;
     const wanted = typeof color === 'number' && Number.isInteger(color) && color >= 0 && color < CAR_COLORS.length ? color : player.color;
     const taken = new Set([...this.players.values()].filter((p) => p !== player).map((p) => p.color));
     if (!taken.has(wanted)) player.color = wanted;
@@ -283,6 +291,9 @@ export class Room {
       // Our current colour is taken too (e.g. we just joined): pick the first free one.
       player.color = CAR_COLORS.findIndex((_, i) => !taken.has(i));
     }
+    // No (valid) livery sent: keep ours, or take the preset of a newly assigned colour.
+    const fallback = player.color !== prevColor ? { ...presetLivery(player.color), number: player.livery.number } : player.livery;
+    player.livery = livery === undefined ? fallback : sanitizeLivery(livery, fallback);
   }
 
   private freeSlot(): number {
@@ -326,7 +337,7 @@ export class Room {
   private roster(): PlayerInfo[] {
     return [...this.players.values()]
       .sort((a, b) => a.slot - b.slot)
-      .map((p) => ({ id: p.id, name: p.name, color: p.color, slot: p.slot, connected: !!p.conn }));
+      .map((p) => ({ id: p.id, name: p.name, color: p.color, slot: p.slot, connected: !!p.conn, livery: p.livery }));
   }
 
   private broadcastRoster() {

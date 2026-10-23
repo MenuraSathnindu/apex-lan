@@ -1,4 +1,4 @@
-import { CAR_COLORS, NAME_MAX_LENGTH, RACE, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
+import { CAR_COLORS, NAME_MAX_LENGTH, RACE, presetLivery, sanitizeLivery, type Livery, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
 
 const PROFILE_KEY = 'apex.profile';
 const SESSION_KEY = 'apex.session';
@@ -6,6 +6,8 @@ const SESSION_KEY = 'apex.session';
 interface Profile {
   name: string;
   color: number;
+  /** Missing in profiles saved before liveries existed. */
+  livery?: Livery;
 }
 
 function read<T>(storage: () => Storage, key: string): T | null {
@@ -70,11 +72,16 @@ export class Session {
   }
 
   hello(): C2S {
-    return { t: 'hello', sessionId: this.sessionId, name: this.profile.name, color: this.profile.color };
+    return { t: 'hello', sessionId: this.sessionId, name: this.profile.name, color: this.profile.color, livery: this.livery };
   }
 
-  setProfile(name: string, color: number): C2S {
-    this.profile = { name: name.slice(0, NAME_MAX_LENGTH), color: Math.max(0, Math.min(CAR_COLORS.length - 1, color)) };
+  /** Our paint scheme: the server's copy once joined, else what we last chose (validated). */
+  get livery(): Livery {
+    return this.me?.livery ?? sanitizeLivery(this.profile.livery, presetLivery(this.profile.color));
+  }
+
+  setProfile(name: string, color: number, livery: Livery = this.livery): C2S {
+    this.profile = { name: name.slice(0, NAME_MAX_LENGTH), color: Math.max(0, Math.min(CAR_COLORS.length - 1, color)), livery };
     write(() => localStorage, PROFILE_KEY, this.profile);
     return { t: 'profile', ...this.profile };
   }
@@ -90,7 +97,7 @@ export class Session {
         this.sessionId = msg.sessionId;
         write(() => sessionStorage, SESSION_KEY, msg.sessionId);
         // The server may have given us a different colour (ours was taken).
-        if (this.me) this.profile = { ...this.profile, color: this.me.color };
+        if (this.me) this.profile = { ...this.profile, color: this.me.color, livery: this.me.livery };
         return true;
       case 'roster':
         this.hostId = msg.hostId;

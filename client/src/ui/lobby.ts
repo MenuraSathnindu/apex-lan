@@ -1,11 +1,11 @@
-import { CAR_COLORS, CAR_COLOR_NAMES, MAX_PLAYERS, NAME_MAX_LENGTH, RACE } from '@apex/shared';
+import { CAR_COLORS, CAR_COLOR_NAMES, LIVERY, MAX_PLAYERS, NAME_MAX_LENGTH, RACE, presetLivery, type Livery } from '@apex/shared';
 import type { Session } from '../game/session.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 export interface LobbyHandlers {
-  onProfile(name: string, color: number): void;
+  onProfile(name: string, color: number, livery: Livery): void;
   onStart(): void;
   onLaps(laps: number): void;
 }
@@ -23,6 +23,13 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
         ${CAR_COLORS.map(
           (c, i) => `<button type="button" class="lobby-color" data-color="${i}" style="--c:${hex(c)}" title="${CAR_COLOR_NAMES[i]}"></button>`,
         ).join('')}
+      </div>
+      <div class="lobby-label">Livery</div>
+      <div class="lobby-livery">
+        <label title="Main colour"><input type="color" data-livery="primary" /><span>Primary</span></label>
+        <label title="Stripes and number roundels"><input type="color" data-livery="secondary" /><span>Secondary</span></label>
+        <label title="Pinstripes, wing endplates"><input type="color" data-livery="accent" /><span>Accent</span></label>
+        <label title="Race number"><input type="number" class="lobby-number" min="0" max="${LIVERY.numberMax}" step="1" /><span>Number</span></label>
       </div>
       <div class="lobby-label">Laps</div>
       <div class="lobby-laps">
@@ -44,19 +51,35 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
   const start = root.querySelector<HTMLButtonElement>('.lobby-start')!;
   const wait = root.querySelector<HTMLElement>('.lobby-wait')!;
 
+  const liveryInputs = [...root.querySelectorAll<HTMLInputElement>('[data-livery]')];
+  const numberInput = root.querySelector<HTMLInputElement>('.lobby-number')!;
+
   nameInput.value = session.profile.name;
   let nameTimer: ReturnType<typeof setTimeout> | undefined;
-  nameInput.addEventListener('input', () => {
+  const sendSoon = (livery = session.livery) => {
     clearTimeout(nameTimer);
-    nameTimer = setTimeout(() => handlers.onProfile(nameInput.value, session.profile.color), 250);
-  });
+    nameTimer = setTimeout(() => handlers.onProfile(nameInput.value, session.profile.color, livery), 250);
+  };
+  nameInput.addEventListener('input', () => sendSoon());
+
+  /** The livery as currently shown in the inputs. */
+  const liveryFromInputs = (): Livery => {
+    const l = { ...session.livery };
+    for (const input of liveryInputs) l[input.dataset.livery as 'primary' | 'secondary' | 'accent'] = parseInt(input.value.slice(1), 16);
+    const n = Math.round(Number(numberInput.value));
+    if (Number.isFinite(n) && n >= 0 && n <= LIVERY.numberMax) l.number = n;
+    return l;
+  };
+  for (const input of [...liveryInputs, numberInput]) input.addEventListener('input', () => sendSoon(liveryFromInputs()));
   nameInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') nameInput.blur();
   });
   for (const b of colorButtons) {
     b.addEventListener('click', () => {
       if (b.disabled) return;
-      handlers.onProfile(nameInput.value, Number(b.dataset.color));
+      // A colour picks that preset scheme, keeping your number.
+      const color = Number(b.dataset.color);
+      handlers.onProfile(nameInput.value, color, { ...presetLivery(color), number: session.livery.number });
     });
   }
   start.addEventListener('click', () => handlers.onStart());
@@ -86,6 +109,11 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
     // Show the server's default ("Player 3") as a placeholder so typing replaces it.
     if (session.me) nameInput.placeholder = session.me.name;
     if (document.activeElement !== nameInput) nameInput.value = session.profile.name;
+    const livery = session.livery;
+    for (const input of liveryInputs) {
+      if (document.activeElement !== input) input.value = hex(livery[input.dataset.livery as 'primary' | 'secondary' | 'accent']);
+    }
+    if (document.activeElement !== numberInput) numberInput.value = String(livery.number);
 
     const takenBy = new Map(session.players.filter((p) => p.id !== session.myId).map((p) => [p.color, p.name]));
     for (const b of colorButtons) {
@@ -104,7 +132,8 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
           .join('');
         return `<li class="${p.connected ? '' : 'away'}">
           <span class="slot">${p.slot + 1}</span>
-          <span class="dot" style="background:${hex(CAR_COLORS[p.color] ?? 0xffffff)}"></span>
+          <span class="dot" style="background:${hex(p.livery.primary)}"></span>
+          <span class="num">#${p.livery.number}</span>
           <span class="name">${esc(p.name)}</span>${tags}
           ${p.connected ? '' : '<span class="status">reconnecting…</span>'}
         </li>`;

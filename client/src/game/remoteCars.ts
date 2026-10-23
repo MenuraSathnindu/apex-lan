@@ -3,7 +3,6 @@ import {
   CAR,
   CAR_COLORS,
   CAR_MODEL,
-  presetLivery,
   INTERP_DELAY_MS,
   REMOTE_STALE_MS,
   RAPIER,
@@ -50,6 +49,9 @@ class RemoteCar {
   }));
   readonly pos = new THREE.Vector3();
   readonly quat = new THREE.Quaternion();
+  /** Livery last applied to the model (JSON), to repaint only on change. */
+  livery = '';
+  /** Grid colour index (minimap, name tag). */
   color = -1;
   active = false;
   /** Sound + effects state, estimated from the interpolated motion. */
@@ -133,7 +135,7 @@ export class RemoteCars {
       keep.add(p.id);
       let car = this.cars.get(p.id);
       if (!car) {
-        const view = new CarView(this.factory(presetLivery(p.color)));
+        const view = new CarView(this.factory(p.livery));
         this.scene.add(view.root);
         view.root.visible = false;
         view.setGlassTransmission(this.glassTransmission);
@@ -148,10 +150,12 @@ export class RemoteCars {
         if (this.audio) car.voice = new CarVoice(this.audio, true);
         this.cars.set(p.id, car);
       }
-      if (car.color !== p.color) {
-        car.view.setLivery(presetLivery(p.color));
-        car.color = p.color;
+      const livery = JSON.stringify(p.livery);
+      if (car.livery !== livery) {
+        car.view.setLivery(p.livery);
+        car.livery = livery;
       }
+      car.color = p.color;
       this.tags.set(p.id, p.name, hex(CAR_COLORS[p.color] ?? 0xffffff), p.connected ? '' : 'reconnecting…');
     }
     for (const [id, car] of this.cars) {

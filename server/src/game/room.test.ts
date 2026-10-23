@@ -4,6 +4,7 @@ import {
   CONNECTION_TIMEOUT_MS,
   RACE,
   buildTrack,
+  presetLivery,
   COUNTDOWN_MS,
   MAX_PLAYERS,
   REJOIN_GRACE_MS,
@@ -66,6 +67,21 @@ describe('Room', () => {
     const extra = join('Late');
     expect(extra.inbox.some((m) => m.t === 'full')).toBe(true);
     expect(extra.closed).toBe(true);
+  });
+
+  it('gives new players the preset livery of their colour and keeps a custom one', () => {
+    const { room, join } = setup();
+    const a = join('Ann', 3);
+    expect(a.last('roster').players[0]!.livery).toEqual(presetLivery(3));
+    const custom = { primary: 0x102030, secondary: 0xffffff, accent: 0x00ff00, number: 77 };
+    room.handle(a, { t: 'profile', name: 'Ann', color: 3, livery: custom });
+    expect(a.last('roster').players[0]!.livery).toEqual(custom);
+    // A bad field is replaced; the rest stays.
+    room.handle(a, { t: 'profile', name: 'Ann', color: 3, livery: { ...custom, number: 1000, accent: -5 } });
+    expect(a.last('roster').players[0]!.livery).toEqual(custom);
+    // Changing colour without sending a livery takes that colour's preset, keeping the number.
+    room.handle(a, { t: 'profile', name: 'Ann', color: 5 });
+    expect(a.last('roster').players[0]!.livery).toEqual({ ...presetLivery(5), number: 77 });
   });
 
   it('sanitises names', () => {

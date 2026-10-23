@@ -17,7 +17,6 @@ import {
   initRapier,
   newErsLap,
   packCarState,
-  presetLivery,
   readWheelStates,
   refillErs,
   resetVehicle,
@@ -108,9 +107,7 @@ const socket = connect({
 // --- Physics.
 await initRapier();
 /** Our paint scheme: the server's copy once we have joined, else what we last chose. */
-function myLivery() {
-  return presetLivery(session.me?.color ?? session.profile.color);
-}
+const myLivery = () => session.livery;
 const track = buildTrack(APEX_PARK);
 world = createWorld();
 addTrackColliders(world, track);
@@ -166,8 +163,8 @@ settings.subscribe((s) => {
 
 // --- Room / race flow.
 const lobby = createLobby($('#lobby'), session, {
-  onProfile(name, color) {
-    socket.send(session.setProfile(name, color));
+  onProfile(name, color, livery) {
+    socket.send(session.setProfile(name, color, livery));
   },
   onStart() {
     socket.send({ t: 'start' });
