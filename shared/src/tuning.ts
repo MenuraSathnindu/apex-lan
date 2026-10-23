@@ -567,6 +567,8 @@ export const RACE = {
   respawnAhead: 3,
   /** Overtake mode unlocks if the car ahead crossed the detection point within this many seconds. */
   overtakeMaxGap: 1.0,
+  /** Points for 1st, 2nd, … (finishers only, races with at least two starters). */
+  points: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1],
 };
 
 // ---------------------------------------------------------------------------

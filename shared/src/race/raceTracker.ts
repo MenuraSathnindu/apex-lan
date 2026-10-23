@@ -30,6 +30,15 @@ export interface LapEvent {
   raceBest: boolean;
   /** This lap finished the race for them. */
   finished: boolean;
+  /** Sector times (ms) of this lap, or null if a split was missed (e.g. a respawn). */
+  sectors: number[] | null;
+}
+
+/** A completed lap as kept for the results / player database. */
+export interface LapRecord {
+  lap: number;
+  time: number;
+  sectors: number[] | null;
 }
 
 /**
@@ -58,6 +67,9 @@ interface Racer {
   finishTime: number | null;
   /** How many times they've crossed the detection point. */
   detections: number;
+  /** Server time this lap crossed each sector line (index 0 = lap start). */
+  splits: (number | null)[];
+  history: LapRecord[];
 }
 
 const wrap = (d: number, len: number) => ((((d + len / 2) % len) + len) % len) - len / 2;
@@ -79,6 +91,8 @@ export class RaceTracker {
   /** crossings[k] = server times of everyone's (k+1)-th detection crossing, in order. */
   private readonly crossings: number[][] = [];
   private pendingDetections: DetectionEvent[] = [];
+  /** Gate index where each sector starts (sector 1 = gate 0). */
+  private readonly sectorGates: number[];
 
   constructor(
     private readonly track: BuiltTrack,
@@ -87,6 +101,13 @@ export class RaceTracker {
     readonly startsAt: number,
     readonly laps: number,
   ) {
+    // Each sector line maps to the gate nearest to it (sector 1 starts at the line, gate 0).
+    this.sectorGates = (track.def.sectors.length ? track.def.sectors : [0]).map((s, k) => {
+      if (k === 0) return 0;
+      let best = 1;
+      for (let g = 1; g < gates.length; g++) if (Math.abs(gates[g]!.s - s) < Math.abs(gates[best]!.s - s)) best = g;
+      return best;
+    });
     const dp = track.def.detectionPoint;
     this.detectionGate = dp === undefined ? null : gateAtDistance(track, dp);
     for (const id of participants) {
@@ -104,6 +125,8 @@ export class RaceTracker {
         bestLap: null,
         finishTime: null,
         detections: 0,
+        splits: this.sectorGates.map((_, k) => (k === 0 ? startsAt : null)),
+        history: [],
       });
     }
   }
@@ -124,6 +147,8 @@ export class RaceTracker {
       const plausible = dist <= RACE.maxPlausibleSpeed * dt + 5;
       const gate = this.gates[r.nextGate]!;
       if (plausible && crossesGate(gate, r.x, r.z, x, z)) {
+        const sector = this.sectorGates.indexOf(r.nextGate);
+        if (sector > 0) r.splits[sector] = ts;
         if (r.nextGate === 0) events.push(this.completeLap(r, ts));
         r.nextGate = (r.nextGate + 1) % this.gates.length;
       }
@@ -155,6 +180,12 @@ export class RaceTracker {
 
   private completeLap(r: Racer, ts: number): LapEvent {
     const time = ts - r.lapStart;
+    // Sector times from the splits, if every one was crossed this lap.
+    const marks = [...r.splits, ts];
+    const sectors = marks.every((m, k) => m !== null && (k === 0 || m > marks[k - 1]!))
+      ? marks.slice(1).map((m, k) => m! - marks[k]!)
+      : null;
+    r.splits = this.sectorGates.map((_, k) => (k === 0 ? ts : null));
     r.laps++;
     r.lastLap = time;
     const personalBest = r.bestLap === null || time < r.bestLap;
@@ -167,7 +198,22 @@ export class RaceTracker {
       r.finishTime = ts - this.startsAt;
       this.firstFinishAt ??= ts;
     }
-    return { id: r.id, lap: r.laps, time, personalBest, raceBest, finished };
+    r.history.push({ lap: r.laps, time, sectors });
+    return { id: r.id, lap: r.laps, time, personalBest, raceBest, finished, sectors };
+  }
+
+  /** Every completed lap of a racer. */
+  lapsOf(id: number): readonly LapRecord[] {
+    return this.racers.get(id)?.history ?? [];
+  }
+
+  /** Who set the fastest lap of the race (earliest wins a tie), or null. */
+  fastestLap(): { id: number; time: number } | null {
+    let best: { id: number; time: number } | null = null;
+    for (const r of this.racers.values()) {
+      if (r.bestLap !== null && (best === null || r.bestLap < best.time)) best = { id: r.id, time: r.bestLap };
+    }
+    return best;
   }
 
   /** Race over: everyone still connected has finished, or the grace period after the winner ran out. */

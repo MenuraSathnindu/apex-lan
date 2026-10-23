@@ -116,6 +116,21 @@ describe('RaceTracker', () => {
   });
 });
 
+describe('sector times', () => {
+  it('splits each lap into the sectors of the track and keeps every lap', () => {
+    const tracker = new RaceTracker(track, gates, [1], START, 2);
+    const { events } = drive(tracker, 1, gridS, 20 + track.length * 2 + 5, 30, START);
+    expect(events).toHaveLength(2);
+    for (const e of events) {
+      expect(e.sectors).toHaveLength(3);
+      expect(e.sectors!.reduce((a, b) => a + b, 0)).toBeCloseTo(e.time, -2);
+      expect(e.sectors!.every((s) => s > 0)).toBe(true);
+    }
+    expect(tracker.lapsOf(1).map((l) => l.lap)).toEqual([1, 2]);
+    expect(tracker.fastestLap()).toEqual({ id: 1, time: Math.min(...events.map((e) => e.time)) });
+  });
+});
+
 describe('overtake detection point', () => {
   const toDetection = 20 + (APEX_PARK.detectionPoint ?? 0) + 30;
   const run = (offsetMs: number) => {
