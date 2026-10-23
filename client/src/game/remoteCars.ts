@@ -51,6 +51,8 @@ class RemoteCar {
   readonly quat = new THREE.Quaternion();
   /** Livery last applied to the model (JSON), to repaint only on change. */
   livery = '';
+  /** Newest relayed state (timing tower: tyre wear, pit lane). */
+  last: CarSnapshot | null = null;
   /** Grid colour index (minimap, name tag). */
   color = -1;
   active = false;
@@ -175,7 +177,10 @@ export class RemoteCars {
   onSnapshot(cars: CarSnapshot[], myId: number): void {
     for (const c of cars) {
       if (c.id === myId) continue;
-      this.cars.get(c.id)?.buffer.push(c.ts, c);
+      const car = this.cars.get(c.id);
+      if (!car) continue;
+      car.buffer.push(c.ts, c);
+      if (!car.last || c.ts >= car.last.ts) car.last = c;
     }
   }
 
@@ -223,6 +228,11 @@ export class RemoteCars {
       tagPos.copy(car.pos).y += TAG_HEIGHT;
       this.tags.place(car.id, tagPos, camera, ok);
     }
+  }
+
+  /** Newest relayed state of a car, or null. */
+  latest(id: number): CarSnapshot | null {
+    return this.cars.get(id)?.last ?? null;
   }
 
   /** Visible remote cars (for the minimap and effects). */

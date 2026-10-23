@@ -315,7 +315,20 @@ const spectator = new Spectator();
 const raceController = new RaceController(track, buildCheckpoints(track), car, session, gridPose);
 /** Pit lane state of our car (zone this tick, and the stop under way). */
 const pit = { zone: 'none' as PitZone, stop: new PitStop(), hint: -1 };
-const raceHud = createRaceHud($('#racehud'), session, clock, raceController, pit);
+/** Whose timing the HUD shows: our car, or the one we're watching (set every frame). */
+let focusId = 0;
+const raceHud = createRaceHud($('#racehud'), session, clock, raceController, pit, {
+  focusId: () => focusId || session.myId,
+  sectors: () => track.def.sectors.length || 1,
+  car: (id) => (id === session.myId ? { tw: car.tyres.wearScale > 0 ? car.tyres.wear : undefined, pl: pit.zone === 'none' ? 0 : 1 } : remoteCars.latest(id)),
+  teamColour: (id) => {
+    const champ = session.champ;
+    const profileId = session.players.find((p) => p.id === id)?.profileId;
+    if (!champ || !session.race.session.round || !profileId) return null;
+    const teamId = champ.entries.find((e) => e.profile.id === profileId)?.teamId;
+    return champ.teams.find((t) => t.id === teamId)?.primary ?? null;
+  },
+});
 const results = createResults(
   $('#results'),
   session,
@@ -517,6 +530,7 @@ startLoop({
       }
     }
     const followed = watching ? [...remoteCars.visible()].find((c) => c.id === spectator.target(visibleIds, session.standings[0]?.id ?? null)) : undefined;
+    focusId = followed?.id ?? session.myId;
     if (followed) cameraRig.update(frameDt, followed.pos, followed.quat, followed.speed);
     else cameraRig.update(frameDt, renderPos, renderQuat, speed);
     remoteCars.render(gfx.camera, frameDt);

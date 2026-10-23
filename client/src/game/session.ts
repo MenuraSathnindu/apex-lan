@@ -62,6 +62,8 @@ export class Session {
   authError: string | null = null;
   /** Login token to present in `hello` (set by the account client). */
   loginToken: () => string | null = () => null;
+  /** Overtake mode per car, from their last detection-point crossing (timing tower ⚡). */
+  readonly overtakes = new Map<number, boolean>();
   /** Result of our own last detection-point crossing (gap to the car ahead, overtake on/off). */
   lastDetection: DetectionEvent | null = null;
   profile: Profile = read<Profile>(() => localStorage, PROFILE_KEY) ?? { name: '', color: 0 };
@@ -125,7 +127,10 @@ export class Session {
         this.players = msg.players;
         return true;
       case 'race':
-        if (msg.race.phase === 'lobby' || msg.race.raceId !== this.race.raceId) this.standings = [];
+        if (msg.race.phase === 'lobby' || msg.race.raceId !== this.race.raceId) {
+          this.standings = [];
+          this.overtakes.clear();
+        }
         this.race = msg.race;
         return true;
       case 'standings':
@@ -148,6 +153,7 @@ export class Session {
         this.notices.push(msg.text);
         return true;
       case 'detect':
+        this.overtakes.set(msg.e.id, msg.e.overtake);
         this.detections.push(msg.e);
         if (this.detections.length > 32) this.detections.shift();
         return false;

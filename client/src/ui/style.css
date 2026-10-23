@@ -840,8 +840,8 @@ body {
 
 .rh-panel {
   position: absolute;
-  top: 56px;
-  left: 12px;
+  top: 52px;
+  right: 12px;
   min-width: 150px;
   padding: 10px 12px;
   border-radius: 10px;
@@ -876,58 +876,6 @@ body {
 .rh-sub {
   font-size: 12px;
   opacity: 0.8;
-}
-
-.rh-ranking {
-  position: absolute;
-  top: 48px;
-  right: 12px;
-  width: 190px;
-  margin: 0;
-  padding: 6px;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.4);
-  list-style: none;
-  font-size: 13px;
-}
-
-.rh-ranking li {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 2px 4px;
-  border-radius: 5px;
-}
-
-.rh-ranking li.me {
-  background: rgba(215, 38, 61, 0.55);
-}
-
-.rh-ranking li.away {
-  opacity: 0.45;
-}
-
-.rk-pos {
-  width: 16px;
-  font-weight: 700;
-}
-
-.rk-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-}
-
-.rk-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rk-status {
-  font-size: 11px;
-  opacity: 0.75;
 }
 
 .rh-wrongway {
@@ -1471,12 +1419,6 @@ body {
 .name-tag-photo[hidden],
 .no-photos .name-tag-photo {
   display: none;
-}
-
-.rk-tag {
-  min-width: 2.6em;
-  font-weight: 800;
-  letter-spacing: 0.04em;
 }
 
 .res-avatar {
@@ -2284,4 +2226,270 @@ body {
 .race-lamp.on i {
   background: radial-gradient(circle at 40% 35%, #ff8a8a, #ff1a1a 45%, #b30000);
   box-shadow: 0 0 22px 4px rgba(255, 30, 30, 0.75);
+}
+
+/* --- Timing tower (left) --- */
+.rh-tower {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 248px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(8, 10, 14, 0.82);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.tt-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: linear-gradient(90deg, #d7263d, #8e1022);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.tt-mode {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.tt-rows {
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+}
+
+.tt-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 26px;
+  padding: 0 8px 0 6px;
+}
+
+.tt-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tt-row.me {
+  background: rgba(215, 38, 61, 0.45);
+}
+
+.tt-row.away {
+  opacity: 0.45;
+}
+
+.tt-pos {
+  width: 18px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.tt-team {
+  width: 4px;
+  height: 18px;
+  border-radius: 2px;
+}
+
+.tt-avatar {
+  flex: none;
+}
+
+.tt-tag {
+  width: 36px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.tt-gap {
+  flex: 1;
+  font-size: 12px;
+  text-align: right;
+  opacity: 0.9;
+}
+
+.tt-badge {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #2b313c;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.tt-badge.tt-pit {
+  background: #1d4ed8;
+}
+
+.tt-badge.tt-pen {
+  background: #b45309;
+}
+
+.tt-badge.tt-fin {
+  background: #e5e7eb;
+  color: #111;
+}
+
+.tt-badge.tt-out,
+.tt-badge.tt-dnf {
+  background: #6b7280;
+}
+
+.tt-ot {
+  width: 12px;
+  color: #facc15;
+  font-size: 12px;
+}
+
+.tt-tyre {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--tc);
+  border-radius: 50%;
+  color: var(--tc);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+/* Wear: the coloured ring shrinks to what is left of the tyre. */
+.tt-tyre.worn {
+  border: 0;
+  background: radial-gradient(closest-side, #0b0d12 72%, transparent 74%), conic-gradient(var(--tc) var(--wear), #3a3f48 0);
+}
+
+/* --- Sectors --- */
+.rh-sectors {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.rh-sectors i {
+  flex: 1;
+  height: 5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.rh-sectors i.purple,
+.rh-delta.purple b {
+  background: #a855f7;
+}
+
+.rh-sectors i.green,
+.rh-delta.green b {
+  background: #22c55e;
+}
+
+.rh-sectors i.yellow,
+.rh-delta.yellow b {
+  background: #eab308;
+}
+
+.rh-delta {
+  position: absolute;
+  top: 22%;
+  right: 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(8, 10, 14, 0.85);
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.rh-delta[hidden],
+.rh-steward[hidden],
+.rh-flag[hidden] {
+  display: none;
+}
+
+.rh-delta b {
+  margin-right: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #4b5563;
+  color: #fff;
+  font-size: 14px;
+}
+
+.rh-delta.faster {
+  color: #4ade80;
+}
+
+.rh-delta.slower {
+  color: #f87171;
+}
+
+/* --- Stewards --- */
+.rh-steward {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  padding: 10px 26px;
+  border-left: 6px solid #facc15;
+  border-radius: 8px;
+  background: rgba(8, 10, 14, 0.88);
+  font-size: clamp(20px, 3.4vw, 32px);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-align: center;
+  transform: translateX(-50%);
+  animation: rh-slide 0.35s ease-out;
+}
+
+.rh-steward.penalty,
+.rh-steward.lapDeleted {
+  border-left-color: #ef4444;
+}
+
+.rh-steward small {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  opacity: 0.8;
+}
+
+@keyframes rh-slide {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+}
+
+/* --- Chequered flag --- */
+.rh-flag {
+  position: absolute;
+  top: 26%;
+  left: 50%;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 22px 10px 12px;
+  border-radius: 10px;
+  background: rgba(8, 10, 14, 0.88);
+  font-size: clamp(18px, 3vw, 28px);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  transform: translateX(-50%);
+}
+
+.rh-flag-cloth {
+  width: 64px;
+  height: 44px;
+  border-radius: 3px;
+  background: repeating-conic-gradient(#111 0 25%, #f5f5f5 0 50%) 0 0 / 16px 16px;
+  animation: rh-wave 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes rh-wave {
+  to {
+    transform: skewY(-6deg) scaleX(0.94);
+  }
 }

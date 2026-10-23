@@ -1,7 +1,7 @@
 import { CAR_COLORS, classifiedTime } from '@apex/shared';
 import { avatarHtml } from './avatar.ts';
 import type { Session } from '../game/session.ts';
-import { formatTime } from './raceHud.ts';
+import { formatTime } from './format.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);

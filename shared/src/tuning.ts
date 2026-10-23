@@ -742,4 +742,11 @@ export const HUD = {
   /** Minimap size (CSS px) and redraw rate (Hz). */
   minimapSize: 190,
   minimapHz: 30,
+  /** How long the sector delta popup, a stewards' banner and the chequered flag stay up (ms). */
+  sectorPopupMs: 2500,
+  stewardBannerMs: 3500,
+  flagMs: 4000,
+  /** Post-race: how long the podium shows before the results table (ms), and highlight clips shown. */
+  podiumMs: 8000,
+  highlightClips: 3,
 };
