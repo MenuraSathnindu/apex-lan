@@ -4,6 +4,7 @@ import { INPUT } from '@apex/shared';
 const BTN = {
   A_CROSS: 0,
   B_CIRCLE: 1,
+  X_SQUARE: 2,
   Y_TRIANGLE: 3,
   LT_L2: 6,
   RT_R2: 7,
@@ -17,6 +18,7 @@ export interface GamepadSample {
   steer: number;
   handbrake: boolean;
   resetPressed: boolean;
+  aeroPressed: boolean;
   cameraPressed: boolean;
   menuPressed: boolean;
 }
@@ -62,6 +64,7 @@ export function createGamepad() {
         steer: Math.sign(rawSteer) * Math.abs(rawSteer) ** INPUT.gamepadSteerExponent,
         handbrake: !!pad.buttons[BTN.A_CROSS]?.pressed,
         resetPressed: edge(pad, BTN.VIEW_SHARE) || edge(pad, BTN.B_CIRCLE),
+        aeroPressed: edge(pad, BTN.X_SQUARE),
         cameraPressed: edge(pad, BTN.Y_TRIANGLE),
         menuPressed: edge(pad, BTN.START_OPTIONS),
       };

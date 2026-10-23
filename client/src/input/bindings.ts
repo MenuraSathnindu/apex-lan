@@ -6,6 +6,7 @@ export const ACTIONS = [
   { id: 'right', label: 'Steer right' },
   { id: 'handbrake', label: 'Handbrake' },
   { id: 'reset', label: 'Reset / respawn' },
+  { id: 'aero', label: 'Open / close wings (straights)' },
   { id: 'camera', label: 'Change camera' },
 ] as const;
 
@@ -19,6 +20,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   right: ['KeyD', 'ArrowRight'],
   handbrake: ['Space'],
   reset: ['KeyR'],
+  aero: ['KeyE'],
   camera: ['KeyC'],
 };
 

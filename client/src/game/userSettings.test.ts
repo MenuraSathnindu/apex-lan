@@ -20,6 +20,14 @@ describe('user settings', () => {
     expect(s.showFps).toBe(true);
   });
 
+  it('keeps the aero key and auto option, and old saves without them still load', () => {
+    expect(sanitizeSettings({ aeroAuto: true }).aeroAuto).toBe(true);
+    const old = sanitizeSettings({ bindings: { throttle: ['KeyI'] } });
+    expect(old.aeroAuto).toBe(false);
+    expect(old.bindings.throttle).toEqual(['KeyI']);
+    expect(old.bindings.aero).toEqual(['KeyE']);
+  });
+
   it('rejects unknown camera modes', () => {
     expect(sanitizeSettings({ camera: { mode: 'drone' } }).camera.mode).toBe('chase');
   });

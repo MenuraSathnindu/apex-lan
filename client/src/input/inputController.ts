@@ -13,6 +13,7 @@ export function createInputController() {
   const any = (codes: string[]) => codes.some((c) => kb.isDown(c));
   const pressed = (codes: string[]) => codes.map((c) => kb.consumePress(c)).some(Boolean);
   let cameraRequested = false;
+  let aeroAuto = false;
   const input: CarInput = { ...NEUTRAL_INPUT };
 
   return {
@@ -22,6 +23,11 @@ export function createInputController() {
 
     setBindings(b: Bindings) {
       KEYS = b;
+    },
+
+    /** Open the wings automatically inside straight zones (a setting). */
+    setAeroAuto(on: boolean) {
+      aeroAuto = on;
     },
 
     /** While disabled (menu open) the car gets neutral input and key presses are dropped. */
@@ -45,6 +51,8 @@ export function createInputController() {
       input.steer = gp && gp.steer !== 0 ? gp.steer : kbSteer;
       input.handbrake = any(KEYS.handbrake) || !!gp?.handbrake;
       input.reset = pressed(KEYS.reset) || !!gp?.resetPressed;
+      input.aero = pressed(KEYS.aero) || !!gp?.aeroPressed;
+      input.aeroAuto = aeroAuto;
       if (pressed(KEYS.camera) || gp?.cameraPressed) cameraRequested = true;
       return input;
     },

@@ -151,6 +151,7 @@ const menu = createMenu($('#menu'), settings, quality, (open) => input.setEnable
 settings.subscribe((s) => {
   audio.setVolumes(s.audio);
   input.setBindings(s.bindings);
+  input.setAeroAuto(s.aeroAuto);
   hud.setBindings(s.bindings);
   cameraRig.options = s.camera;
   cameraRig.setMode(s.camera.mode);
@@ -277,6 +278,7 @@ startLoop({
       raceController.respawn('manual');
       lastInput = { ...lastInput, reset: false };
     }
+    raceController.locate();
     stepVehicle(car, lastInput, FIXED_DT);
     remoteCars.stepPhysics();
     world!.step();

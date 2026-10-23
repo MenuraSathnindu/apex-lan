@@ -17,6 +17,8 @@ export interface UserSettings {
   };
   showFps: boolean;
   bindings: Bindings;
+  /** Open the wings by themselves inside straight-mode zones. */
+  aeroAuto: boolean;
 }
 
 export const CAMERA_LIMITS = { distance: [0.7, 1.6], fovOffset: [-10, 15] } as const;
@@ -29,6 +31,7 @@ export function defaultSettings(): UserSettings {
     camera: { mode: 'chase', distance: 1, fovOffset: 0, speedFov: true },
     showFps: false,
     bindings: sanitizeBindings(null),
+    aeroAuto: false,
   };
 }
 
@@ -39,7 +42,7 @@ const num = (v: unknown, lo: number, hi: number, fallback: number) =>
 export function sanitizeSettings(raw: unknown): UserSettings {
   const d = defaultSettings();
   if (typeof raw !== 'object' || raw === null) return d;
-  const r = raw as { audio?: Record<string, unknown>; camera?: Record<string, unknown>; showFps?: unknown; bindings?: unknown };
+  const r = raw as { audio?: Record<string, unknown>; camera?: Record<string, unknown>; showFps?: unknown; bindings?: unknown; aeroAuto?: unknown };
   const a = r.audio ?? {};
   const c = r.camera ?? {};
   return {
@@ -58,6 +61,7 @@ export function sanitizeSettings(raw: unknown): UserSettings {
     },
     showFps: r.showFps === true,
     bindings: sanitizeBindings(r.bindings),
+    aeroAuto: r.aeroAuto === true,
   };
 }
 

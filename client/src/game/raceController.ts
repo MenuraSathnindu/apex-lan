@@ -1,5 +1,7 @@
 import {
   RACE,
+  distanceFromStart,
+  inZone,
   nearestSample,
   resetVehicle,
   respawnPose,
@@ -60,13 +62,26 @@ export class RaceController {
     this.lastRespawn = { reason, at: performance.now() };
   }
 
+  /** Distance along the lap from the start line (m), updated by `locate()`. */
+  distance = 0;
+
+  /**
+   * Finds where the car is on the track and tells the sim whether it is inside a straight-mode
+   * zone (wings may open). Call every physics tick, before `stepVehicle`.
+   */
+  locate(): void {
+    const p = this.car.body.translation();
+    this.hint = nearestSample(this.track, p.x, p.z, this.hint);
+    this.distance = distanceFromStart(this.track, this.hint);
+    this.car.inAeroZone = inZone(this.track.def.aeroZones, this.distance);
+  }
+
   /** Call every physics tick while racing. */
   step(dt: number): void {
     const body = this.car.body;
     const p = body.translation();
     const v = body.linvel();
     const q = body.rotation();
-    this.hint = nearestSample(this.track, p.x, p.z, this.hint);
     const smp = this.track.samples[this.hint]!;
 
     // Wrong way: heading against the track direction while moving.

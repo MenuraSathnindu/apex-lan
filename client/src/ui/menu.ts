@@ -20,7 +20,7 @@ const VOLUMES: { key: 'master' | 'engine' | 'effects' | 'ui'; label: string }[] 
 const TABS = ['audio', 'graphics', 'controls', 'camera'] as const;
 type Tab = (typeof TABS)[number];
 
-const GAMEPAD_HELP = 'RT / R2 throttle · LT / L2 brake · left stick steer · A / ✕ handbrake · B / ○ reset · Y / △ camera · Start menu';
+const GAMEPAD_HELP = 'RT / R2 throttle · LT / L2 brake · left stick steer · A / ✕ handbrake · X / □ wings · B / ○ reset · Y / △ camera · Start menu';
 
 /**
  * Pause menu (Esc, the ☰ button, or gamepad Start): audio volumes, graphics quality,
@@ -68,6 +68,7 @@ export function createMenu(root: HTMLElement, store: SettingsStore, quality: Qua
             ).join('')}
             <tr><th>Menu</th><td><span class="menu-key fixed">Esc</span></td><td></td></tr>
           </tbody></table>
+          <label class="menu-check"><input type="checkbox" data-aero-auto /> Open wings automatically in straight zones</label>
           <p class="menu-hint">Click a key, then press the new one. <b>Esc</b> cancels, <b>Delete</b> clears the slot.</p>
           <p class="menu-hint">🎮 ${GAMEPAD_HELP}. Browsers only expose gamepads on <b>localhost</b> or https, so on a friend's http:// LAN link it's keyboard only.</p>
           <button type="button" class="menu-secondary" data-reset-keys>Reset to defaults</button>
@@ -121,6 +122,7 @@ export function createMenu(root: HTMLElement, store: SettingsStore, quality: Qua
     }
     $<HTMLInputElement>('[data-mute]').checked = s.audio.muted;
     $<HTMLInputElement>('[data-fps]').checked = s.showFps;
+    $<HTMLInputElement>('[data-aero-auto]').checked = s.aeroAuto;
     for (const b of $$<HTMLButtonElement>('.menu-key[data-action]')) {
       if (b === listening) continue;
       const code = s.bindings[b.dataset.action as Action][Number(b.dataset.slot)];
@@ -165,6 +167,7 @@ export function createMenu(root: HTMLElement, store: SettingsStore, quality: Qua
     });
   }
   $<HTMLInputElement>('[data-mute]').addEventListener('change', (e) => store.update((s) => (s.audio.muted = (e.target as HTMLInputElement).checked)));
+  $<HTMLInputElement>('[data-aero-auto]').addEventListener('change', (e) => store.update((s) => (s.aeroAuto = (e.target as HTMLInputElement).checked)));
   $<HTMLInputElement>('[data-fps]').addEventListener('change', (e) => store.update((s) => (s.showFps = (e.target as HTMLInputElement).checked)));
   for (const r of $$<HTMLInputElement>('input[name=quality]')) {
     r.addEventListener('change', () => {
