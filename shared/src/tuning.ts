@@ -588,6 +588,9 @@ export const RACE = {
   penaltyMs: 5000,
   /** Moving further than this from the grid spot (m) between the first light and lights out = jump start. */
   jumpStartDistance: 1.5,
+  /** A car is judged once it reports a position this close to its grid slot (m); cars this close to a jump-starter were pushed (m). */
+  jumpStartSlotRadius: 4,
+  jumpStartContact: 6,
   /**
    * Track limits: beyond the road edge + kerb by more than `margin` (m) at more than `minSpeed`
    * (m/s) is a strike; every `strikesPerPenalty`-th strike in a race is a time penalty.

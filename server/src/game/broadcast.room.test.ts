@@ -98,9 +98,10 @@ describe('Room broadcast rules', () => {
     h.room.runSession({ session: freeSession(1), trackId: track.def.id, tyreWear: 'normal', entrants: [h.idOf(a), h.idOf(b)] }, (o) => done.push(o));
     const race = a.last('race').race;
     h.wait(lightsStartAt(race.startsAt, race.raceId) - h.now() + 100);
-    h.send(a, at(0, 0));
+    const slot = track.spawnGrid[0]!.position;
+    h.send(a, at(slot.x, slot.z));
     h.wait(500);
-    h.send(a, at(3, 0));
+    h.send(a, at(slot.x + 3, slot.z));
     expect(a.last('steward').e.reason).toBe('jumpStart');
     h.go();
     // Ann is a little faster (≈1 s over the lap), less than the 5 s penalty.

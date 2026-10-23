@@ -596,7 +596,7 @@ export class Room {
     this.tracker = new RaceTracker(this.track, this.gates, entrants, startsAt, kind === 'qualifying' ? 1_000_000 : laps);
     this.limits = new TrackLimits(this.track);
     this.strikes = new Map();
-    this.jumpStarts = kind === 'qualifying' ? null : new JumpStartJudge(lightsStartAt(startsAt, raceId), startsAt, entrants);
+    this.jumpStarts = kind === 'qualifying' ? null : new JumpStartJudge(lightsStartAt(startsAt, raceId), startsAt, this.gridSlots(entrants));
     this.raceEntrants = new Map(entrants.map((id, i) => [id, { profileId: this.players.get(id)!.profile?.id ?? null, grid: i + 1 }]));
     this.running = { spec: { ...spec, entrants }, onDone, qualiLaps: [], doneAfterFlag: new Set(), flyingDone: new Set(), atFlag: null };
     this.race = { ...this.race, phase: 'countdown', raceId, startsAt, finishDeadline: 0, laps, tyreWear: spec.tyreWear, session };
@@ -706,6 +706,15 @@ export class Room {
     }
     const penalty = strikes % RACE.trackLimits.strikesPerPenalty === 0;
     this.steward({ id, kind: penalty ? 'penalty' : 'warning', reason: 'trackLimits', strikes, penaltyMs: penalty ? RACE.penaltyMs : 0 });
+  }
+
+  /** Where each entrant starts on the grid (by their grid slot). */
+  private gridSlots(ids: number[]): Map<number, { x: number; z: number }> {
+    const grid = this.track.spawnGrid;
+    return new Map(ids.map((id) => {
+      const pose = grid[this.players.get(id)?.gridSlot ?? 0] ?? grid[0]!;
+      return [id, { x: pose.position.x, z: pose.position.z }];
+    }));
   }
 
   /** Race control: tell everyone, and add any time penalty to the racer's finish. */
