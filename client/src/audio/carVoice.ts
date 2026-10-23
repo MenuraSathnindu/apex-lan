@@ -120,6 +120,23 @@ export class CarVoice {
     this.audio.oneShot(this.audio.bank.pop, dest, 0.35 * this.level, 0.9 + Math.random() * 0.25);
   }
 
+  /**
+   * Paddle shift: the gearbox clack, plus a throttle-blip crackle on downshifts.
+   * Remote cars play it at their position.
+   */
+  shift(up: boolean, position?: THREE.Vector3): void {
+    const s = AUDIO.shift;
+    let dest: AudioNode = this.audio.bus('effects');
+    if (this.positional && position) {
+      const p = this.audio.panner(dest);
+      this.audio.setPannerPosition(p, position);
+      dest = p;
+      setTimeout(() => p.disconnect(), 500);
+    }
+    this.audio.oneShot(this.audio.bank.shift, dest, s.clickGain * this.level, up ? 1 : 0.85);
+    if (!up) this.audio.oneShot(this.audio.bank.pop, dest, s.blipGain * this.level, 1.3 + Math.random() * 0.2);
+  }
+
   /** Fade everything out (car hidden / stale). */
   silence(): void {
     if (this.silent) return;

@@ -78,7 +78,9 @@ class RemoteCar {
     const accel = dt > 0 ? (speed - this.speed) / dt : 0;
     this.speed = speed;
     const throttle = accel > 0.8 ? 1 : accel > -0.5 && Math.abs(speed) > 1 ? 0.3 : 0;
+    const gear = this.drivetrain.gear;
     stepDrivetrain(this.drivetrain, speed, throttle, accel < -4, dt);
+    if (this.drivetrain.shifted && gear > 0 && this.drivetrain.gear > 0) this.voice?.shift(this.drivetrain.gear > gear, this.pos);
     this.slip = Math.abs(v[0] * side.x + v[1] * side.y + v[2] * side.z);
     // What's under the car (a few times a second is plenty).
     if ((this.surfaceTimer -= dt) <= 0) {

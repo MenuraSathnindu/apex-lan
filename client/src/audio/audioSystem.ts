@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { AUDIO } from '@apex/shared';
-import { engineBuffer, impactBuffer, noiseBuffer, popBuffer, scrapeBuffer, screechBuffer } from './synth.ts';
+import { engineBuffer, impactBuffer, noiseBuffer, popBuffer, scrapeBuffer, screechBuffer, shiftBuffer } from './synth.ts';
 
 export type Bus = 'engine' | 'effects' | 'ui';
 export interface Volumes {
@@ -20,10 +20,12 @@ export interface SoundBank {
   noise: AudioBuffer;
   impacts: AudioBuffer[];
   pop: AudioBuffer;
+  /** Paddle-shift clack. */
+  shift: AudioBuffer;
 }
 
-/** rpm of the procedural engine loop. */
-const SYNTH_ENGINE_RPM = 1500;
+/** rpm of the procedural engine loop (mid-range, so 4–12k rpm plays at 0.7–2× speed). */
+const SYNTH_ENGINE_RPM = 6000;
 
 async function loadFile(ctx: AudioContext, path: string): Promise<AudioBuffer | null> {
   try {
@@ -95,6 +97,7 @@ export class AudioSystem {
       noise: noiseBuffer(ctx),
       impacts: impact ? [impact] : [0, 1, 2].map((i) => impactBuffer(ctx, i)),
       pop: popBuffer(ctx),
+      shift: shiftBuffer(ctx),
     };
     return new AudioSystem(ctx, bank);
   }

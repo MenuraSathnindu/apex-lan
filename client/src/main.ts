@@ -329,6 +329,7 @@ startLoop({
     const gearbox = localFx.drivetrain;
     voice.update({ rpm: gearbox.rpm, load: gearbox.load, slip: localFx.screechSlip, scrape: localFx.scrape, speed: Math.abs(speed) });
     for (; localFx.upshifts > 0; localFx.upshifts--) voice.pop();
+    for (const up of localFx.shifts.splice(0)) voice.shift(up);
     for (const hit of localFx.impacts.splice(0)) {
       audio.impact((hit.dv - FX.impactMinDv) / (FX.impactFullDv - FX.impactMinDv) + 0.15);
       effects.impact(hit, car);

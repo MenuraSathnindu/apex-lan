@@ -40,6 +40,8 @@ export class LocalCarFx {
   readonly impacts: ImpactEvent[] = [];
   /** Upshifts since last drained (exhaust pops). */
   upshifts = 0;
+  /** Gear changes since last drained: true = up, false = down (paddle-shift sounds). */
+  readonly shifts: boolean[] = [];
 
   private cooldown = 0;
   private lastDv = 0;
@@ -51,6 +53,7 @@ export class LocalCarFx {
     stepDrivetrain(this.drivetrain, speed, reversing ? input.brake : input.throttle, input.brake > 0 && speed > 0.5, dt);
     const gear = this.drivetrain.gear;
     if (this.drivetrain.shifted && gear > this.lastGear && gear > 1 && input.throttle > 0.8) this.upshifts++;
+    if (this.drivetrain.shifted && this.shifts.length < MAX_QUEUED) this.shifts.push(gear > this.lastGear);
     this.lastGear = gear;
 
     readWheelSlip(car, input, this.slips);

@@ -75,9 +75,9 @@ function toBuffer(ctx: BaseAudioContext, data: Float32Array): AudioBuffer {
 }
 
 /**
- * V8 engine loop at `baseRpm`, on load. Built from individual exhaust pulses (8 per
- * 720° of crank, slightly uneven like a cross-plane V8), so playing it faster raises
- * the firing frequency the way a real engine does. Loops seamlessly: pulses wrap around.
+ * High-revving V6 engine loop at `baseRpm`, on load. Built from individual exhaust pulses
+ * (6 evenly spaced per 720° of crank), so playing it faster raises the firing frequency the
+ * way a real engine does. Loops seamlessly: pulses wrap around.
  */
 export function engineBuffer(ctx: BaseAudioContext, baseRpm: number): AudioBuffer {
   const sr = ctx.sampleRate;
@@ -86,14 +86,14 @@ export function engineBuffer(ctx: BaseAudioContext, baseRpm: number): AudioBuffe
   const cycles = 8;
   const len = Math.round(cycleSec * cycles * sr);
   const data = new Float32Array(len);
-  const amp = [1, 0.78, 0.93, 0.7, 0.97, 0.74, 0.88, 0.82];
-  const at = [0, 0.118, 0.25, 0.372, 0.5, 0.614, 0.75, 0.866];
-  const firing = cycleSec / 8;
+  const amp = [1, 0.86, 0.95, 0.83, 0.97, 0.88];
+  const at = [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6];
+  const firing = cycleSec / at.length;
   const tau = firing * 0.32;
-  const resonance = 190; // exhaust "body" (Hz at base rpm)
+  const resonance = 430; // exhaust "body" (Hz at base rpm): small, high-revving engine
   const pulseLen = Math.round(firing * 1.6 * sr);
   for (let c = 0; c < cycles; c++) {
-    for (let k = 0; k < 8; k++) {
+    for (let k = 0; k < at.length; k++) {
       const start = Math.round((c + at[k]! + (rand() - 0.5) * 0.01) * cycleSec * sr);
       const a = amp[k]! * (0.88 + rand() * 0.24);
       const phase = rand() * Math.PI * 2;
@@ -108,7 +108,7 @@ export function engineBuffer(ctx: BaseAudioContext, baseRpm: number): AudioBuffe
   }
   // Crank-rate rumble underneath.
   for (let i = 0; i < len; i++) data[i]! += Math.sin((2 * Math.PI * i * cycles) / len) * 0.12 + Math.sin((4 * Math.PI * i * cycles) / len) * 0.1;
-  onePoleLowpass(data, sr, 2600);
+  onePoleLowpass(data, sr, 5200);
   removeDc(data);
   normalize(data);
   return toBuffer(ctx, data);
@@ -183,6 +183,26 @@ export function impactBuffer(ctx: BaseAudioContext, seed: number): AudioBuffer {
     data[i] = s;
   }
   onePoleLowpass(data, sr, 5000);
+  normalize(data);
+  return toBuffer(ctx, data);
+}
+
+/**
+ * Paddle-shift clack: a sharp mechanical click from the gearbox (a fast-decaying noise burst
+ * plus a metallic tick) over a short low thunk as the gear engages.
+ */
+export function shiftBuffer(ctx: BaseAudioContext): AudioBuffer {
+  const sr = ctx.sampleRate;
+  const rand = rng(57);
+  const len = Math.round(0.08 * sr);
+  const noise = new Float32Array(len);
+  for (let i = 0; i < len; i++) noise[i] = (rand() * 2 - 1) * Math.exp(-i / sr / 0.004);
+  const data = bandpass(noise, sr, 3200, 1.4);
+  for (let i = 0; i < len; i++) {
+    const t = i / sr;
+    data[i]! += Math.sin(2 * Math.PI * 1850 * t) * Math.exp(-t / 0.012) * 0.35;
+    data[i]! += Math.sin(2 * Math.PI * 115 * t) * Math.exp(-t / 0.022) * 0.5;
+  }
   normalize(data);
   return toBuffer(ctx, data);
 }

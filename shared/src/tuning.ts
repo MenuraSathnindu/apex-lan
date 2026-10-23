@@ -583,10 +583,12 @@ export const AUDIO = {
     minGain: 0.28,
     maxGain: 0.9,
     /** Low-pass cutoff (Hz): closed throttle → open throttle, plus per-rpm brightening. */
-    cutoffClosed: 900,
-    cutoffOpen: 3800,
-    cutoffPerRpm: 0.35,
+    cutoffClosed: 1400,
+    cutoffOpen: 6500,
+    cutoffPerRpm: 0.25,
   },
+  /** Paddle shifts: gearbox clack (every shift) and the throttle-blip crackle (downshifts). */
+  shift: { clickGain: 0.45, blipGain: 0.3 },
   skid: { maxGain: 0.55, minRate: 0.85, maxRate: 1.2 },
   scrape: { maxGain: 0.6 },
   wind: { gainAt60ms: 0.25 },
