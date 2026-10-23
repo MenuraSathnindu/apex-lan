@@ -68,6 +68,8 @@ export interface BuiltTrack {
   /** Height added per sample where the track crosses itself (the later part goes over). */
   lift: Float32Array;
   pitBuilding: Placement | null;
+  /** Qualifying start places along the pit lane (falls back to the grid when there's no pit lane). */
+  pitBoxes: SpawnPose[];
   grandstands: Placement[];
 }
 
@@ -464,6 +466,7 @@ export function buildTrack(def: TrackDef): BuiltTrack {
   const barrierMeshes: BarrierMesh[] = [];
   const barrierSegments: BarrierSegment[] = [];
   let pitBuilding: Placement | null = null;
+  const pitBoxes: SpawnPose[] = [];
   if (pit && pitRange) {
     const [a, b] = pitRange;
     const w = S.pit.width / 2;
@@ -477,6 +480,14 @@ export function buildTrack(def: TrackDef): BuiltTrack {
       const mesh = emptyMesh();
       buildBarrierRun(samples, fa, fb, (i) => pit.side * (edgeOf(i, pit.side) + S.pit.gap / 2 - wall.thickness / 2), pit.side, wall.height, wall.thickness, lift, mesh, barrierSegments);
       barrierMeshes.push({ kind: wall.kind, role: 'pit', mesh });
+
+      // Qualifying start places in the lane, one every PIT_BOX_SPACING m, front first.
+      const every = Math.max(1, Math.round(S.pit.boxSpacing / step));
+      for (let k = fb - every; k >= fa && pitBoxes.length < S.pit.boxes; k -= every) {
+        const smp = samples[wrapI(k)]!;
+        const off = laneCentre[wrapI(k)]!;
+        pitBoxes.push({ position: { x: smp.x + smp.nx * off, y: 1.0, z: smp.z + smp.nz * off }, yaw: Math.atan2(smp.tx, smp.tz) });
+      }
 
       // Pit building behind the lane, along the full-width part.
       const mid = wrapI(Math.round((fa + fb) / 2));
@@ -570,6 +581,7 @@ export function buildTrack(def: TrackDef): BuiltTrack {
     barrierRight,
     lift,
     pitBuilding,
+    pitBoxes: pitBoxes.length >= def.grid.length || pitBoxes.length >= S.pit.boxes ? pitBoxes : spawnGrid,
     grandstands,
   };
 }

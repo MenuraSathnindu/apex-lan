@@ -528,6 +528,9 @@ export const TRACK_STYLE = {
     buildingDepth: 14,
     buildingHeight: 8,
     garageSpacing: 12,
+    /** Qualifying starts from the pit lane: this many places, this far apart (m). */
+    boxes: 20,
+    boxSpacing: 9,
   },
   grandstand: {
     /** Stands along the start straight (m before/after the line), and spacing between them. */

@@ -27,6 +27,10 @@ export interface PlayerInfo {
   tag: string;
   /** Profile photo URL, or null. */
   photo: string | null;
+  /** Start position for the current session (grid, or pit box in qualifying); null = spectating. */
+  gridSlot: number | null;
+  /** Takes part in the current session (false = spectator). */
+  entrant: boolean;
 }
 
 export interface RaceState {
