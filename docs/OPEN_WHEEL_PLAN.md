@@ -132,6 +132,11 @@ Do R1–R7 and R13 in **p8**, R8–R10 and R12 right before the feature that nee
   within ±3 % of the published length), is drivable by `bots`, and loads in < 1 s on the host.
 
 ### p11 — Player profiles (SQLite on the host)
+> **Status 2026-10-23:** done, with the user's choices replacing parts of the plan below:
+> `better-sqlite3` (not `node:sqlite`), name + 4-digit PIN login with bcrypt (mandatory PIN), photos
+> up to 5 MB processed with `sharp` (not client-side resizing), data in `server/data/`. Poles and
+> titles have columns but stay 0 until qualifying / championships exist (p12). See docs/PROFILES.md.
+
 - **Storage:** `node:sqlite` (built into Node ≥ 22.13; the repo runs 22.14 — it still prints an
   experimental warning, so pin `engines.node` and keep the DB behind `server/src/db/` so
   `better-sqlite3` can replace it). One file `data/apex.sqlite` (`APEX_DATA_DIR` overrides;

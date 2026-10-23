@@ -150,6 +150,9 @@ it into the server build for prod.
 ### 3.1 Roles
 - **Client:** simulates its own car with Rapier at 60 Hz, sends `CarState` at 30 Hz, and
   renders everyone else from relayed snapshots.
+- **Profiles (`server/src/db`, `server/src/http`, docs/PROFILES.md):** SQLite `PlayerDb` (migrations, typed queries,
+  stats from raw rows), JSON API + photo upload/serving in front of the static files. The room links
+  players to profiles by login token (`hello.token` / `auth`) and records results when a race ends.
 - **Server (`server/src/game/room.ts`):** one `Room`, independent of sockets and unit-tested.
   It owns players (id, name, colour, grid slot), the host, the race phase and rejoin. It
   validates and relays car states and never simulates.

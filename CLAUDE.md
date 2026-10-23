@@ -20,7 +20,9 @@ phase. If a decision changes, update that doc in the same change.
 > ([`docs/OPENWHEEL_MODEL.md`](docs/OPENWHEEL_MODEL.md)). **Phase 10 real-track pipeline done (2026-10-23)**: 45 circuits
 > generated from open data (`npm run tracks`), runtime generator (kerbs, gravel, armco/walls, pit lane, stands),
 > track select screen, every track lapped by the headless autopilot (`npm run tracks:check`). Elevation not done
-> (the datasets are 2D). **Next: Phase 8 — foundations** (refactors R2–R7/R13,
+> (the datasets are 2D). **Phase 11 player profiles done (2026-10-23)**: SQLite on the host (`better-sqlite3`),
+> name + 4-digit PIN (bcrypt, LAN-level only), photos via `sharp`, career stats / bests / head-to-head / Hall of Fame,
+> photos in lobby, timing tower, podium and name tags ([`docs/PROFILES.md`](docs/PROFILES.md)). **Next: Phase 8 — foundations** (refactors R2–R7/R13,
 > binary codec, trademark lint). Phase 6 leftovers: visual body roll, real tree models.
 > Update this line when a phase's exit criteria are met.
 
@@ -95,9 +97,9 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 - Tests: Vitest, colocated as `*.test.ts`. Test shared logic (codec round-trips, interpolation sampling, lap logic, ring buffer) and a headless server sim ("car drives forward and stays upright").
 - **Cars are `CarSpec`s** looked up by id (`CAR_SPECS`, phase 8); never import a global `CAR` in new code — take the spec as an argument. Aero modes and ERS live in `shared/src/physics/{aero,ers}.ts` as deterministic per-tick functions called from `stepVehicle`; extra per-car sim state goes into `CarState` (binary codec) so remote cars and the timing tower can show it.
 - **Boost eligibility is server-granted** (gap at detection gates from `RaceTracker`); the force itself is client-side like all physics.
-- **Server persistence** lives only in `server/src/db/` (SQLite, numbered migrations, never edit an applied one). `Room`/`SessionRunner` depend on `Store` interfaces injected at construction (tests use in-memory fakes). Data dir `data/` (`APEX_DATA_DIR`) is git-ignored. Career stats are SQL queries over `race_result`, not stored counters; result inserts are idempotent (`UNIQUE(session_id, profile_id)`).
-- **Identity:** `sessionId` (per tab) = rejoin; `profileId` + secret `profileToken` (localStorage; server stores only a hash) = who you are. Championship seats are keyed by `profileId`.
-- **HTTP API** goes through `server/src/http/router.ts` (body size limits, JSON helpers). WebSocket stays for live race data; uploads (profile photo: ≤ 64 KB, JPEG/PNG/WebP by magic bytes, never SVG, `nosniff`) use HTTP, not WS.
+- **Server persistence** lives only in `server/src/db/` (`PlayerDb`, `better-sqlite3`, numbered migrations in `migrations.ts` — never edit a shipped one; typed prepared queries). `Room` depends on the `ProfileDirectory` / `ResultsSink` interfaces injected at construction (tests use fakes; `PlayerDb(':memory:')` for DB tests). Data dir `server/data/` (`APEX_DATA_DIR`) is git-ignored. Career stats are SQL over `race_result` / `lap` rows, never stored counters; one result per profile per race (`UNIQUE(race_id, profile_id)`, one transaction per race).
+- **Identity:** `sessionId` (per tab, sessionStorage) = rejoin; the profile login token (localStorage `apex.login`, server stores only its SHA-256) = who you are, sent in `hello` or `auth`. PINs are bcrypt — LAN-level protection only, say so wherever it's described. A profile drives one car at a time. Championship seats are keyed by `profileId`. Who raced as which profile is frozen at the race start.
+- **HTTP API** goes through `server/src/http/router.ts` (body size limits, JSON helpers, `HttpError`); endpoints in `http/api.ts`, types in `shared/src/protocol/api.ts`. WebSocket stays for live race data; uploads use HTTP. Photos: JPEG/PNG/WebP decided by magic bytes *and* a `sharp` decode, ≤ 5 MB, cropped to 256×256 WebP, metadata stripped, random file names, served `immutable` + `nosniff`. Never SVG. Vite proxies `/api` and `/photos` in dev; the native modules (`better-sqlite3`, `bcrypt`, `sharp`) stay `--external` in the server bundle.
 - **Tracks:** real circuits are generated offline by `tools/build-tracks.ts` (config + names in `tools/tracks.config.ts`) into committed JSON; runtime code only reads `TrackDef`. The datasets' licences and `ATTRIBUTION.md` live next to the JSON, and each file has a `source` block. Look at the `tools/out/<id>.svg` preview before committing a track: start line (`startShift`) and direction (`reverse`) aren't in the data. Select tracks by id (room `trackId`, `TrackProvider`), never `APEX_PARK` directly. Track style knobs (kerbs, run-off, barriers, pit lane, stands) are `TRACK_STYLE` in `tuning.ts`.
 - **Sessions:** a `Session` has `kind` (`free | qualifying | sprint | race`), `trackId`, rules and a points table; the server's `RaceTracker` classifies per kind. Championship state is persisted after every session.
 - **Broadcast UI** (timing tower, sector bar, lights) is DOM/CSS only — no new full-screen GPU passes; update ≤ 5 Hz from server standings. Start-light delay is seeded from `raceId` so all clients agree.
@@ -114,7 +116,7 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 8. **Foundations & robustness** — refactors (car specs registry, `Session` extracted from `Room`, `TrackDef` v2, HTTP router, `Store` interfaces, split `tuning.ts`), binary codec + quantization + `PROTOCOL_VERSION`, remove the real-marque car model, trademark lint + CI, 2nd track
 9. **Open-wheel car** — `CAR_SPECS['open-wheel']`, procedural model with animated wings, Active Aero (`corner`/`straight`), ERS battery, Boost (server-granted)
 10. **Real-track pipeline** ✅ (except elevation) — `tools/build-tracks.ts` (TUMFTM + Bacinger → `TrackDef` JSON), variable width, sectors, pit lane, aero/detection zones, 45 circuits, track select
-11. **Player profiles** — SQLite (`node:sqlite`) on the host, profile token identity, photo upload, career stats
+11. **Player profiles** ✅ — SQLite (`better-sqlite3`) on the host, name + PIN login, photo upload, career stats, Hall of Fame
 12. **Championship** — qualifying / sprint / race weekends, points, driver + team standings, save/resume keyed by `profileId`
 13. **Broadcast presentation** — start lights, timing tower, sector UI, banners, onboard cam (DOM overlays only)
 14. **Open-source readiness** — LICENSE, README/CONTRIBUTING, disclaimer, licence audit, history scrub, CI release

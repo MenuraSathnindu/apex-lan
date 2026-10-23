@@ -210,6 +210,13 @@ Work through these in order. Each step rules out one layer.
 
 ---
 
+## Player profiles and backups
+
+Profiles, stats and photos are stored on **your** laptop in `server/data/` (see
+[`docs/PROFILES.md`](docs/PROFILES.md)). Copy that folder to back them up (with the server stopped),
+or set `APEX_DATA_DIR` to keep it somewhere else. The 4-digit PINs only keep friends from driving
+as each other; they are not real security, so don't run the server on an untrusted network.
+
 ## Quick checklist for game night
 
 - [ ] Laptop plugged in, on the same Wi-Fi as everyone (not a guest network), VPN off
