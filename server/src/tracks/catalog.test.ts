@@ -1,7 +1,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { APEX_PARK, buildTrack, initRapier } from '@apex/shared';
+import { APEX_PARK, PRESET_2026, buildTrack, initRapier } from '@apex/shared';
 import { trackContract } from '../../../shared/src/track/trackContract.testutil.ts';
 import { trackCatalog } from './catalog.ts';
 
@@ -18,6 +18,10 @@ describe('track catalog', () => {
     const ids = catalog.list().map((t) => t.id);
     expect(ids[0]).toBe(APEX_PARK.id);
     for (const id of FIRST_FIVE) expect(ids).toContain(id);
+  });
+
+  it('has every track of the 2026-style preset calendar', () => {
+    for (const r of PRESET_2026.rounds) expect(catalog.get(r.trackId), r.trackId).not.toBeNull();
   });
 
   it('refuses unknown ids and path tricks', () => {

@@ -52,11 +52,16 @@ export interface LapInput {
   lap: number;
   timeMs: number;
   sectors: (number | null)[] | null;
+  /** False for a lap with a respawn: it was driven, but it's never a best. Default true. */
+  valid?: boolean;
 }
 
 export interface RaceInput {
   trackId: string;
-  kind: 'race';
+  /** 'qualifying' rows only carry laps (no results); only 'race' rows count as races in the stats. */
+  kind: 'race' | 'sprint' | 'qualifying';
+  /** Set for sessions of a championship. */
+  championshipId?: number;
   laps: number;
   finishedAt: number;
   results: ResultInput[];
@@ -95,24 +100,27 @@ export class PlayerDb {
       tokenProfile: db.prepare<[string], { profile_id: number }>('SELECT profile_id FROM login_token WHERE token_hash = ?'),
       touchToken: db.prepare<[number, string]>('UPDATE login_token SET last_used = ? WHERE token_hash = ?'),
       deleteToken: db.prepare<[string]>('DELETE FROM login_token WHERE token_hash = ?'),
-      insertRace: db.prepare<[string, string, number, number, number]>('INSERT INTO race (track_id, kind, laps, starters, finished_at) VALUES (?, ?, ?, ?, ?)'),
+      insertRace: db.prepare<[string, string, number, number, number, number | null]>(
+        'INSERT INTO race (track_id, kind, laps, starters, finished_at, championship_id) VALUES (?, ?, ?, ?, ?, ?)',
+      ),
       insertResult: db.prepare<[number, number, number | null, number | null, number, number, number | null, number | null, number, number, number]>(
         `INSERT INTO race_result (race_id, position, profile_id, grid, dnf, laps, total_ms, best_lap_ms, fastest_lap, pole, points)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
-      insertLap: db.prepare<[number, number, string, number, number, number | null, number | null, number | null, number]>(
-        'INSERT INTO lap (race_id, profile_id, track_id, lap, time_ms, s1_ms, s2_ms, s3_ms, set_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      insertLap: db.prepare<[number, number, string, number, number, number | null, number | null, number | null, number, number]>(
+        'INSERT INTO lap (race_id, profile_id, track_id, lap, time_ms, s1_ms, s2_ms, s3_ms, set_at, valid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       ),
       stats: db.prepare<[number], Omit<CareerStats, 'championships' | 'laps'>>(
+        // Only races count as races / wins / podiums; sprints add their points.
         `SELECT
-           COALESCE(SUM(r.starters >= 2), 0)                                  AS races,
-           COALESCE(SUM(r.starters < 2), 0)                                   AS practice,
-           COALESCE(SUM(r.starters >= 2 AND rr.position = 1 AND rr.dnf = 0), 0) AS wins,
-           COALESCE(SUM(r.starters >= 2 AND rr.position <= 3 AND rr.dnf = 0), 0) AS podiums,
-           COALESCE(SUM(rr.pole), 0)                                          AS poles,
-           COALESCE(SUM(r.starters >= 2 AND rr.fastest_lap = 1), 0)           AS fastestLaps,
-           COALESCE(SUM(rr.dnf), 0)                                           AS dnfs,
-           COALESCE(SUM(rr.points), 0)                                        AS points
+           COALESCE(SUM(r.kind = 'race' AND r.starters >= 2), 0)                                    AS races,
+           COALESCE(SUM(r.kind = 'race' AND r.starters < 2), 0)                                     AS practice,
+           COALESCE(SUM(r.kind = 'race' AND r.starters >= 2 AND rr.position = 1 AND rr.dnf = 0), 0)  AS wins,
+           COALESCE(SUM(r.kind = 'race' AND r.starters >= 2 AND rr.position <= 3 AND rr.dnf = 0), 0) AS podiums,
+           COALESCE(SUM(r.kind = 'race' AND rr.pole), 0)                                            AS poles,
+           COALESCE(SUM(r.kind = 'race' AND r.starters >= 2 AND rr.fastest_lap = 1), 0)             AS fastestLaps,
+           COALESCE(SUM(r.kind = 'race' AND rr.dnf), 0)                                             AS dnfs,
+           COALESCE(SUM(rr.points), 0)                                                              AS points
          FROM race_result rr JOIN race r ON r.id = rr.race_id
          WHERE rr.profile_id = ?`,
       ),
@@ -123,10 +131,10 @@ export class PlayerDb {
         { track_id: string; best: number; s1: number | null; s2: number | null; s3: number | null; laps: number }
       >(
         `SELECT track_id, MIN(time_ms) AS best, MIN(s1_ms) AS s1, MIN(s2_ms) AS s2, MIN(s3_ms) AS s3, COUNT(*) AS laps
-         FROM lap WHERE profile_id = ? GROUP BY track_id ORDER BY track_id`,
+         FROM lap WHERE profile_id = ? AND valid = 1 GROUP BY track_id ORDER BY track_id`,
       ),
       bestLapOf: db.prepare<[number, string], { s1_ms: number | null; s2_ms: number | null; s3_ms: number | null; set_at: number }>(
-        'SELECT s1_ms, s2_ms, s3_ms, set_at FROM lap WHERE profile_id = ? AND track_id = ? ORDER BY time_ms, set_at LIMIT 1',
+        'SELECT s1_ms, s2_ms, s3_ms, set_at FROM lap WHERE profile_id = ? AND track_id = ? AND valid = 1 ORDER BY time_ms, set_at LIMIT 1',
       ),
       headToHead: db.prepare<[number, number], { opponent: number; ahead: number; behind: number }>(
         `SELECT other.profile_id AS opponent,
@@ -145,13 +153,13 @@ export class PlayerDb {
         // Each driver's fastest lap on the track (earliest wins a tie).
         `SELECT l.profile_id, l.time_ms, l.s1_ms, l.s2_ms, l.s3_ms, l.set_at
          FROM lap l
-         WHERE l.track_id = ? AND NOT EXISTS (
-           SELECT 1 FROM lap b WHERE b.track_id = l.track_id AND b.profile_id = l.profile_id
+         WHERE l.track_id = ? AND l.valid = 1 AND NOT EXISTS (
+           SELECT 1 FROM lap b WHERE b.track_id = l.track_id AND b.profile_id = l.profile_id AND b.valid = 1
              AND (b.time_ms < l.time_ms OR (b.time_ms = l.time_ms AND b.set_at < l.set_at)))
          ORDER BY l.time_ms, l.set_at
          LIMIT ?`,
       ),
-      trackIds: db.prepare<[], { track_id: string }>('SELECT DISTINCT track_id FROM lap ORDER BY track_id'),
+      trackIds: db.prepare<[], { track_id: string }>('SELECT DISTINCT track_id FROM lap WHERE valid = 1 ORDER BY track_id'),
       addTitle: db.prepare<[number, string, number]>('INSERT INTO championship_title (profile_id, name, won_at) VALUES (?, ?, ?)'),
     };
   }
@@ -258,7 +266,9 @@ export class PlayerDb {
   /** Stores a finished race (all starters + every lap of profiled drivers) in one transaction. */
   recordRace(race: RaceInput): number {
     return this.db.transaction(() => {
-      const raceId = Number(this.q.insertRace.run(race.trackId, race.kind, race.laps, race.results.length, race.finishedAt).lastInsertRowid);
+      const raceId = Number(
+        this.q.insertRace.run(race.trackId, race.kind, race.laps, race.results.length, race.finishedAt, race.championshipId ?? null).lastInsertRowid,
+      );
       for (const r of race.results) {
         this.q.insertResult.run(
           raceId,
@@ -276,7 +286,7 @@ export class PlayerDb {
       }
       for (const l of race.lapTimes) {
         const s = l.sectors ?? [];
-        this.q.insertLap.run(raceId, l.profileId, race.trackId, l.lap, l.timeMs, s[0] ?? null, s[1] ?? null, s[2] ?? null, race.finishedAt);
+        this.q.insertLap.run(raceId, l.profileId, race.trackId, l.lap, l.timeMs, s[0] ?? null, s[1] ?? null, s[2] ?? null, race.finishedAt, l.valid === false ? 0 : 1);
       }
       return raceId;
     })();
