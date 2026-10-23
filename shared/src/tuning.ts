@@ -579,6 +579,8 @@ export const RACE = {
   lights: { leadMs: 1500, intervalMs: 1000, count: 5, holdMinMs: 1000, holdMaxMs: 3000 },
   /** A time penalty (jump start, every 3rd track-limits strike), added to the finish time (ms). */
   penaltyMs: 5000,
+  /** Moving further than this from the grid spot (m) between the first light and lights out = jump start. */
+  jumpStartDistance: 1.5,
 };
 
 /** Championship weekends (sessions and points). */

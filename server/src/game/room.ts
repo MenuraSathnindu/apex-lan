@@ -8,6 +8,8 @@ import {
   CAR_COLORS,
   RACE,
   RaceTracker,
+  JumpStartJudge,
+  lightsStartAt,
   classifiedTime,
   type BuiltTrack,
   type Gate,
@@ -152,6 +154,8 @@ export class Room {
   private track!: BuiltTrack;
   private gates!: Gate[];
   private tracker: RaceTracker | null = null;
+  /** Watches the grid during the start lights (races only). */
+  private jumpStarts: JumpStartJudge | null = null;
   private updates = 0;
   private readonly profiles: ProfileDirectory | null;
   private readonly results: ResultsSink | null;
@@ -220,6 +224,9 @@ export class Room {
         player.state = msg.s;
         player.stateTs = this.now();
         player.speed = Math.hypot(msg.s.v[0], msg.s.v[2]);
+        if (this.jumpStarts && this.race.phase === 'countdown' && this.jumpStarts.onState(player.id, msg.s.p[0], msg.s.p[2], player.stateTs)) {
+          this.steward({ id: player.id, kind: 'penalty', reason: 'jumpStart', strikes: 0, penaltyMs: RACE.penaltyMs });
+        }
         if (this.tracker && (this.race.phase === 'countdown' || this.race.phase === 'racing')) {
           for (const e of this.tracker.onState(player.id, msg.s.p[0], msg.s.p[2], player.stateTs)) this.onLap(e);
           for (const e of this.tracker.takeDetections()) this.broadcast({ t: 'detect', e });
@@ -571,6 +578,7 @@ export class Room {
     }
     // Qualifying has no lap limit: it ends on time (or after the flying laps).
     this.tracker = new RaceTracker(this.track, this.gates, entrants, startsAt, kind === 'qualifying' ? 1_000_000 : laps);
+    this.jumpStarts = kind === 'qualifying' ? null : new JumpStartJudge(lightsStartAt(startsAt, raceId), startsAt, entrants);
     this.raceEntrants = new Map(entrants.map((id, i) => [id, { profileId: this.players.get(id)!.profile?.id ?? null, grid: i + 1 }]));
     this.running = { spec: { ...spec, entrants }, onDone, qualiLaps: [], doneAfterFlag: new Set(), flyingDone: new Set(), atFlag: null };
     this.race = { ...this.race, phase: 'countdown', raceId, startsAt, finishDeadline: 0, laps, tyreWear: spec.tyreWear, session };
@@ -676,6 +684,8 @@ export class Room {
     if (e.kind === 'lapDeleted') this.tracker?.invalidateLap(e.id);
     this.log(`stewards: ${this.players.get(e.id)?.name ?? e.id} ${e.kind} (${e.reason}${e.strikes ? `, strike ${e.strikes}` : ''})`);
     this.broadcast({ t: 'steward', e });
+    // The tower shows penalties right away.
+    if (e.penaltyMs > 0 && this.tracker) this.broadcast({ t: 'standings', standings: this.sessionStandings() });
   }
 
   /** Switches the room to a track (lobby only): laps reset to the track's default. */

@@ -22,6 +22,7 @@ export * from './race/checkpoints.ts';
 export * from './race/raceTracker.ts';
 export * from './race/sessions.ts';
 export * from './race/startLights.ts';
+export * from './race/jumpStart.ts';
 export * from './physics/drivetrain.ts';
 export * from './physics/vehicleFx.ts';
 export * from './physics/autopilot.ts';
