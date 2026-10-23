@@ -36,6 +36,7 @@ import {
   type CarState,
   type Compound,
   type S2C,
+  type C2S,
   type TrackIndexEntry,
   type PitZone,
   type WheelState,
@@ -457,7 +458,7 @@ loading.hide();
 
 if (import.meta.env.DEV) {
   // Debug handle for poking at the game from the browser console (and automated tests).
-  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock, raceController, audio, localFx, effects, profiler } });
+  Object.assign(window, { __apex: { gfx, car, track, quality, cameraRig, carView, trackView, session, remoteCars, clock, raceController, audio, localFx, effects, profiler, broadcast, send: (m: C2S) => socket.send(m) } });
 }
 
 startLoop({

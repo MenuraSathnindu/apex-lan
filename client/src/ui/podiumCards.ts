@@ -32,7 +32,7 @@ export function createPodiumCards(root: HTMLElement, onResults: () => void) {
       holder.innerHTML = top
         .map((p, i) =>
           p
-            ? `<div class="pc-card p${i + 1}">${avatarHtml({ photo: p.photo, tag: p.tag, color: p.livery.primary }, i === 0 ? 88 : 72, 'pc-avatar')}
+            ? `<div class="pc-card p${i + 1}">${avatarHtml({ photo: p.photo, tag: p.tag, color: p.livery.primary }, i === 0 ? 72 : 58, 'pc-avatar')}
                 <div class="pc-pos">P${i + 1}</div><div class="pc-name">${esc(p.name)}</div></div>`
             : '<div class="pc-card empty"></div>',
         )

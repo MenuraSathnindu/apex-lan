@@ -137,6 +137,8 @@ export class RaceTracker {
   private readonly crossings: number[][] = [];
   private pendingDetections: DetectionEvent[] = [];
   private pendingSectors: SectorEvent[] = [];
+  /** Newest report time seen ("now" for gaps of cars that haven't reached the next gate). */
+  private lastTs = 0;
   /** Gate index where each sector starts (sector 1 = gate 0). */
   private readonly sectorGates: number[];
 
@@ -188,6 +190,7 @@ export class RaceTracker {
   onState(id: number, x: number, z: number, ts: number): LapEvent[] {
     const r = this.racers.get(id);
     if (!r || this.final) return [];
+    this.lastTs = Math.max(this.lastTs, ts);
     const events: LapEvent[] = [];
     const moved = r.hasPos && ts >= this.startsAt && r.finishTime === null;
     if (moved) {
@@ -339,7 +342,12 @@ export class RaceTracker {
     const common = Math.min(leader.gateTimes.length, r.gateTimes.length);
     if (common === 0) return { gap: null, lapsDown: 0 };
     const lapsDown = Math.floor((leader.gateTimes.length - r.gateTimes.length) / this.gates.length);
-    return { gap: Math.max(0, r.gateTimes[common - 1]! - leader.gateTimes[common - 1]!), lapsDown: Math.max(0, lapsDown) };
+    // At the last gate both passed — but if the leader has passed the next one too, we're at least
+    // as far behind as the time since then (this keeps growing for a car that has stopped).
+    const atGate = r.gateTimes[common - 1]! - leader.gateTimes[common - 1]!;
+    const next = leader.gateTimes[common];
+    const sinceNext = next === undefined ? 0 : this.lastTs - next;
+    return { gap: Math.max(0, atGate, sinceNext), lapsDown: Math.max(0, lapsDown) };
   }
 
   standings(): Standing[] {

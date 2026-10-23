@@ -298,3 +298,20 @@ describe('live sector events', () => {
     expect(tracker.takeSectors()[0]!.valid).toBe(false);
   });
 });
+
+describe('RaceTracker gaps while stopped', () => {
+  it('a car that stops falls further behind as the leader drives on', () => {
+    const tracker = new RaceTracker(track, gates, [1, 2], START, 3);
+    // Ben sets off first and stops after 250 m; Ann drives past him.
+    const ben = drive(tracker, 2, gridS, 20 + 250, 30, START);
+    const ann = drive(tracker, 1, gridS, 20 + 600, 30, START + 1000);
+    const [lead, second] = tracker.standings();
+    expect(lead!.id).toBe(1);
+    // Ann reached the gate after Ben's last one well after he stopped: never a 0 gap.
+    expect(second!.gap).toBeGreaterThan(1000);
+    const before = second!.gap!;
+    drive(tracker, 1, gridS + 620, 300, 30, ann.t);
+    expect(tracker.standings()[1]!.gap!).toBeGreaterThan(before);
+    expect(ben.t).toBeLessThan(ann.t);
+  });
+});
