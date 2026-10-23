@@ -581,6 +581,11 @@ export const RACE = {
   penaltyMs: 5000,
   /** Moving further than this from the grid spot (m) between the first light and lights out = jump start. */
   jumpStartDistance: 1.5,
+  /**
+   * Track limits: beyond the road edge + kerb by more than `margin` (m) at more than `minSpeed`
+   * (m/s) is a strike; every `strikesPerPenalty`-th strike in a race is a time penalty.
+   */
+  trackLimits: { margin: 1, minSpeed: 15, strikesPerPenalty: 3 },
 };
 
 /** Championship weekends (sessions and points). */

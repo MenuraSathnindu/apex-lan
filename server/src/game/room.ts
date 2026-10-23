@@ -9,6 +9,7 @@ import {
   RACE,
   RaceTracker,
   JumpStartJudge,
+  TrackLimits,
   lightsStartAt,
   classifiedTime,
   type BuiltTrack,
@@ -156,6 +157,9 @@ export class Room {
   private tracker: RaceTracker | null = null;
   /** Watches the grid during the start lights (races only). */
   private jumpStarts: JumpStartJudge | null = null;
+  /** Track-limits excursions this session, and strikes per car. */
+  private limits: TrackLimits | null = null;
+  private strikes = new Map<number, number>();
   private updates = 0;
   private readonly profiles: ProfileDirectory | null;
   private readonly results: ResultsSink | null;
@@ -226,6 +230,9 @@ export class Room {
         player.speed = Math.hypot(msg.s.v[0], msg.s.v[2]);
         if (this.jumpStarts && this.race.phase === 'countdown' && this.jumpStarts.onState(player.id, msg.s.p[0], msg.s.p[2], player.stateTs)) {
           this.steward({ id: player.id, kind: 'penalty', reason: 'jumpStart', strikes: 0, penaltyMs: RACE.penaltyMs });
+        }
+        if (this.limits && this.race.phase === 'racing' && this.tracker?.isParticipant(player.id) && !this.tracker.hasFinished(player.id)) {
+          if (this.limits.onState(player.id, msg.s.p[0], msg.s.p[2], player.speed)) this.trackLimitsStrike(player.id);
         }
         if (this.tracker && (this.race.phase === 'countdown' || this.race.phase === 'racing')) {
           for (const e of this.tracker.onState(player.id, msg.s.p[0], msg.s.p[2], player.stateTs)) this.onLap(e);
@@ -544,6 +551,8 @@ export class Room {
     this.running = null;
     this.race = { ...this.race, phase: 'lobby', startsAt: 0, finishDeadline: 0, session: freeSession(this.race.laps) };
     this.tracker = null;
+    this.jumpStarts = null;
+    this.limits = null;
     for (const p of this.players.values()) {
       p.gridSlot = p.slot;
       p.entrant = true;
@@ -578,6 +587,8 @@ export class Room {
     }
     // Qualifying has no lap limit: it ends on time (or after the flying laps).
     this.tracker = new RaceTracker(this.track, this.gates, entrants, startsAt, kind === 'qualifying' ? 1_000_000 : laps);
+    this.limits = new TrackLimits(this.track);
+    this.strikes = new Map();
     this.jumpStarts = kind === 'qualifying' ? null : new JumpStartJudge(lightsStartAt(startsAt, raceId), startsAt, entrants);
     this.raceEntrants = new Map(entrants.map((id, i) => [id, { profileId: this.players.get(id)!.profile?.id ?? null, grid: i + 1 }]));
     this.running = { spec: { ...spec, entrants }, onDone, qualiLaps: [], doneAfterFlag: new Set(), flyingDone: new Set(), atFlag: null };
@@ -676,6 +687,18 @@ export class Room {
       this.race = { ...this.race, finishDeadline: this.now() + RACE.finishGraceMs };
       this.broadcast({ t: 'race', race: this.race });
     }
+  }
+
+  /** A track-limits excursion: deletes the lap in qualifying; warnings, then every 3rd strike +5 s in races. */
+  private trackLimitsStrike(id: number) {
+    const strikes = (this.strikes.get(id) ?? 0) + 1;
+    this.strikes.set(id, strikes);
+    if (this.race.session.kind === 'qualifying') {
+      this.steward({ id, kind: 'lapDeleted', reason: 'trackLimits', strikes, penaltyMs: 0 });
+      return;
+    }
+    const penalty = strikes % RACE.trackLimits.strikesPerPenalty === 0;
+    this.steward({ id, kind: penalty ? 'penalty' : 'warning', reason: 'trackLimits', strikes, penaltyMs: penalty ? RACE.penaltyMs : 0 });
   }
 
   /** Race control: tell everyone, and add any time penalty to the racer's finish. */

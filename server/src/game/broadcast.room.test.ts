@@ -1,9 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { RACE, countdownMs, freeSession, lightsStartAt, type CarState } from '@apex/shared';
+import { RACE, TRACK_STYLE, countdownMs, freeSession, lightsStartAt, type CarState } from '@apex/shared';
 import type { SessionOutcome } from './room.ts';
 import { setup, track, type FakeConn } from './roomHarness.testutil.ts';
 
 const at = (x: number, z: number): CarState => ({ p: [x, 0.7, z], q: [0, 0, 0, 1], v: [0, 0, 0], wh: new Array(12).fill(0), b: 0 });
+
+const step = track.samples[1]!.s;
+/** A state `off` metres left of the centreline at distance `s`, moving forward at `speed`. */
+const beside = (s: number, off: number, speed: number): CarState => {
+  const smp = track.samples[Math.floor(s / step) % track.samples.length]!;
+  return { p: [smp.x + smp.nx * off, 0.7, smp.z + smp.nz * off], q: [0, 0, 0, 1], v: [smp.tx * speed, 0, smp.tz * speed], wh: new Array(12).fill(0), b: 0 };
+};
+/** Drives sideways off the track at distance `s` and back, a metre per state (plausible movement). */
+const excursion = (h: { send: (c: FakeConn, s: CarState) => void; wait: (ms: number) => void }, c: FakeConn, s: number) => {
+  const smp = track.samples[Math.floor(s / step)]!;
+  const out = smp.wl + TRACK_STYLE.curbWidth + RACE.trackLimits.margin + 2;
+  const offs = [...Array.from({ length: Math.ceil(out) + 1 }, (_, k) => k), ...Array.from({ length: Math.ceil(out) + 1 }, (_, k) => Math.ceil(out) - k)];
+  for (const off of offs) {
+    h.send(c, beside(s, off, 30));
+    h.wait(1000 / 30);
+  }
+};
 
 /** Starts a quick race with Ann and Ben; returns the light timings. */
 function quickRace() {
@@ -94,5 +111,34 @@ describe('Room broadcast rules', () => {
     expect(first!.playerId).toBe(h.idOf(b));
     expect(second!.playerId).toBe(h.idOf(a));
     expect(second!.totalMs! - first!.totalMs!).toBeGreaterThan(RACE.penaltyMs - 2000);
+  });
+
+  it('third track-limits strike in a race gives +5 s (warnings before)', () => {
+    const h = quickRace();
+    h.go();
+    const s0 = track.length / 2;
+    for (let k = 0; k < 3; k++) excursion(h, h.a, s0 + k * 20);
+    const events = h.b.inbox.flatMap((m) => (m.t === 'steward' ? [m.e] : []));
+    expect(events.map((e) => [e.kind, e.strikes])).toEqual([['warning', 1], ['warning', 2], ['penalty', 3]]);
+    expect(events[2]).toMatchObject({ reason: 'trackLimits', penaltyMs: RACE.penaltyMs });
+    expect(h.b.last('standings').standings.find((s) => s.id === h.idOf(h.a))!.penaltyMs).toBe(RACE.penaltyMs);
+  });
+
+  it('a qualifying excursion deletes the lap', () => {
+    const h = setup();
+    const a = h.join('Ann');
+    h.room.runSession({ session: { kind: 'qualifying', laps: 3, qualifying: { mode: 'timed', minutes: 5 }, endsAt: 0, round: null }, trackId: track.def.id, tyreWear: 'normal', entrants: [h.idOf(a)] }, () => {});
+    h.go();
+    // Out lap (clean), then a flying lap with one excursion half way round.
+    h.drive(a, -5, track.length + 10, 40);
+    expect(a.last('standings').standings[0]!.bestLap).not.toBeNull();
+    const bestBefore = a.last('standings').standings[0]!.bestLap;
+    h.drive(a, 5, track.length / 2, 40);
+    excursion(h, a, track.length / 2 + 6);
+    h.drive(a, track.length / 2 + 6, track.length / 2, 40);
+    expect(a.last('steward').e).toMatchObject({ kind: 'lapDeleted', reason: 'trackLimits', penaltyMs: 0 });
+    // The deleted lap set no time (the out lap is still the best).
+    h.wait(500);
+    expect(a.last('standings').standings[0]!.bestLap).toBe(bestBefore);
   });
 });

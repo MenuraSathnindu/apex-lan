@@ -70,6 +70,10 @@ export interface BuiltTrack {
   pitBuilding: Placement | null;
   /** Qualifying start places along the pit lane (falls back to the grid when there's no pit lane). */
   pitBoxes: SpawnPose[];
+  /** Lateral offset of the pit lane's centre per sample (+ = left), NaN where there is no lane. */
+  pitLaneCentre: Float32Array;
+  /** 1 where the pit lane runs at full width (between the entry and exit ramps). */
+  pitLaneFull: Uint8Array;
   grandstands: Placement[];
 }
 
@@ -582,6 +586,8 @@ export function buildTrack(def: TrackDef): BuiltTrack {
     lift,
     pitBuilding,
     pitBoxes: pitBoxes.length >= def.grid.length || pitBoxes.length >= S.pit.boxes ? pitBoxes : spawnGrid,
+    pitLaneCentre: laneCentre,
+    pitLaneFull: laneFull,
     grandstands,
   };
 }

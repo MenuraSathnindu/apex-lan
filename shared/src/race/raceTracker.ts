@@ -231,6 +231,11 @@ export class RaceTracker {
     return { id: r.id, lap: r.laps, time, personalBest, raceBest, finished, sectors, valid };
   }
 
+  /** Has this racer taken the chequered flag? */
+  hasFinished(id: number): boolean {
+    return this.racers.get(id)?.finishTime != null;
+  }
+
   /** A time penalty, served by adding it to the racer's finish time. */
   addPenalty(id: number, ms: number): void {
     const r = this.racers.get(id);
