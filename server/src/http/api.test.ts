@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { presetLivery, type AuthResponse, type ProfileSummary } from '@apex/shared';
+import { ChampionshipDb } from '../db/championships.ts';
 import { PlayerDb } from '../db/database.ts';
 import { createApi } from './api.ts';
 import { sniffImageType } from './photos.ts';
@@ -14,12 +15,14 @@ let server: Server;
 let base = '';
 let db: PlayerDb;
 let photosDir = '';
+let champs: ChampionshipDb;
 const changed: ProfileSummary[] = [];
 
 beforeAll(async () => {
   db = new PlayerDb(':memory:');
   photosDir = mkdtempSync(join(tmpdir(), 'apex-photos-'));
-  const api = createApi({ db, photosDir, pinRounds: 4, onProfileChanged: (p) => changed.push(p) });
+  champs = new ChampionshipDb(db);
+  const api = createApi({ db, photosDir, pinRounds: 4, championships: champs, onProfileChanged: (p) => changed.push(p) });
   server = createServer(async (req, res) => {
     if (!(await api.handle(req, res))) res.writeHead(404).end();
   });
@@ -175,5 +178,16 @@ describe('stats endpoints', () => {
     const hof = (await (await fetch(`${base}/api/hall-of-fame/monza`)).json()) as { profile: ProfileSummary; lapMs: number }[];
     expect(hof[0]).toMatchObject({ profile: { name: 'Eve' }, lapMs: 90_000 });
     expect((await fetch(`${base}/api/profiles`, { method: 'DELETE' })).status).toBe(405);
+  });
+});
+
+describe('championship history', () => {
+  it('lists seasons and serves one season, 404 for unknown', async () => {
+    expect(await (await fetch(`${base}/api/championships`)).json()).toEqual([]);
+    const v = champs.create({ name: 'Old cup', settings: { laps: 3, qualifying: { mode: 'oneShot' }, fastestLapPoint: false, tyreWear: true }, rounds: [{ trackId: 'monza', sprint: false }] }, 1);
+    const list = (await (await fetch(`${base}/api/championships`)).json()) as { id: number; name: string }[];
+    expect(list).toEqual([expect.objectContaining({ id: v.id, name: 'Old cup', status: 'setup', rounds: 1 })]);
+    expect(await (await fetch(`${base}/api/championships/${v.id}`)).json()).toMatchObject({ id: v.id, rounds: [{ trackId: 'monza' }] });
+    expect((await fetch(`${base}/api/championships/9999`)).status).toBe(404);
   });
 });

@@ -31,6 +31,7 @@ const http = createServer((req, res) => {
   void api.handle(req, res).then((handled) => handled || serveStatic(req, res));
 });
 const wss = new WebSocketServer({ server: http, path: WS_PATH, maxPayload: 64 * 1024 });
+const championships = new ChampionshipDb(db);
 const room = new Room({
   log: (m) => console.log(`[room] ${m}`),
   tracks: trackCatalog(tracksDir, (m) => console.log(`[tracks] ${m}`)),
@@ -42,9 +43,9 @@ const room = new Room({
     saveLivery: (id, livery) => db.setLivery(id, livery),
   },
   results: { recordRace: (race) => db.recordRace(race) },
-  championships: new ChampionshipDb(db),
+  championships,
 });
-const api = createApi({ db, photosDir: join(dataDir, 'photos'), onProfileChanged: (p) => room.profileUpdated(p) });
+const api = createApi({ db, championships, photosDir: join(dataDir, 'photos'), onProfileChanged: (p) => room.profileUpdated(p) });
 
 function toConnection(ws: WebSocket): Connection {
   return {

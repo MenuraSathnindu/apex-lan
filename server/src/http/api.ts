@@ -12,6 +12,7 @@ import {
   type AuthResponse,
   type ProfileSummary,
 } from '@apex/shared';
+import type { ChampionshipStore } from '../db/championships.ts';
 import { PlayerDb, type Profile } from '../db/database.ts';
 import { deletePhoto, PHOTO_FILE, processPhoto, savePhoto } from './photos.ts';
 import { HttpError, readBody, readJson, Router, sendJson, type RequestContext } from './router.ts';
@@ -19,6 +20,8 @@ import { HttpError, readBody, readJson, Router, sendJson, type RequestContext } 
 export interface ApiOptions {
   db: PlayerDb;
   photosDir: string;
+  /** Championship seasons (read-only history endpoints). */
+  championships?: ChampionshipStore;
   /** bcrypt cost (tests use a low one). */
   pinRounds?: number;
   /** Called after a profile's public details changed (tag, livery, photo), so the room can update. */
@@ -137,6 +140,14 @@ export function createApi(opts: ApiOptions): Router {
   router.on('GET', /^\/api\/hall-of-fame$/, (ctx) => sendJson(ctx.res, 200, { tracks: db.tracksWithLaps() }));
 
   router.on('GET', /^\/api\/hall-of-fame\/([a-z0-9-]{1,64})$/, (ctx) => sendJson(ctx.res, 200, db.hallOfFame(ctx.params[0]!)));
+
+  router.on('GET', /^\/api\/championships$/, (ctx) => sendJson(ctx.res, 200, opts.championships?.list() ?? []));
+
+  router.on('GET', /^\/api\/championships\/(\d{1,9})$/, (ctx) => {
+    const view = opts.championships?.view(Number(ctx.params[0]));
+    if (!view) throw new HttpError(404, 'no such season');
+    sendJson(ctx.res, 200, view);
+  });
 
   // Photos: random names, never rewritten, so they can be cached forever.
   router.on('GET', /^\/photos\/([^/]+)$/, (ctx) => {
