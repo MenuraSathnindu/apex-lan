@@ -577,6 +577,8 @@ export const RACE = {
    * `intervalMs`; all lit, they hold between holdMin and holdMax (from the race number), then out = GO.
    */
   lights: { leadMs: 1500, intervalMs: 1000, count: 5, holdMinMs: 1000, holdMaxMs: 3000 },
+  /** A time penalty (jump start, every 3rd track-limits strike), added to the finish time (ms). */
+  penaltyMs: 5000,
 };
 
 /** Championship weekends (sessions and points). */

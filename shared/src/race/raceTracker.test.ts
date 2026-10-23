@@ -3,7 +3,7 @@ import { buildTrack } from '../track/track.ts';
 import { APEX_PARK } from '../track/tracks.ts';
 import { RACE } from '../tuning.ts';
 import { buildCheckpoints, crossesGate } from './checkpoints.ts';
-import { RaceTracker } from './raceTracker.ts';
+import { RaceTracker, classifiedTime } from './raceTracker.ts';
 
 const track = buildTrack(APEX_PARK);
 const gates = buildCheckpoints(track);
@@ -197,3 +197,36 @@ describe('overtake detection point', () => {
   });
 });
 
+
+describe('RaceTracker penalties', () => {
+  it('penalty reorders finishers by penalised time', () => {
+    const tracker = new RaceTracker(track, gates, [1, 2], START, 1);
+    drive(tracker, 1, gridS, 20 + track.length + 5, 30, START);
+    // Ben runs the same lap 2 s later.
+    drive(tracker, 2, gridS, 20 + track.length + 5, 30, START + 2000);
+    expect(tracker.standings().map((s) => s.id)).toEqual([1, 2]);
+    tracker.addPenalty(1, RACE.penaltyMs);
+    const rows = tracker.standings();
+    expect(rows.map((s) => s.id)).toEqual([2, 1]);
+    expect(rows.find((s) => s.id === 1)!.penaltyMs).toBe(RACE.penaltyMs);
+    expect(classifiedTime(rows[1]!)).toBe(rows[1]!.finishTime! + RACE.penaltyMs);
+  });
+
+  it('standings carry penaltyMs (0 without penalties)', () => {
+    const tracker = new RaceTracker(track, gates, [1], START, 1);
+    expect(tracker.standings()[0]!.penaltyMs).toBe(0);
+    tracker.addPenalty(1, 5000);
+    tracker.addPenalty(1, 5000);
+    expect(tracker.standings()[0]!.penaltyMs).toBe(10_000);
+  });
+
+  it('invalidateLap makes the current lap invalid', () => {
+    const tracker = new RaceTracker(track, gates, [1], START, 3);
+    const first = drive(tracker, 1, gridS, 20 + 300, 30, START);
+    tracker.invalidateLap(1);
+    const { events } = drive(tracker, 1, gridS + 320, track.length - 300 + 5, 30, first.t);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.valid).toBe(false);
+    expect(tracker.standings()[0]!.bestLap).toBeNull();
+  });
+});

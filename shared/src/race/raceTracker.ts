@@ -19,6 +19,13 @@ export interface Standing {
   finishTime: number | null;
   /** Didn't finish (only set once results are final). */
   dnf: boolean;
+  /** Time penalties (ms), added to the finish time for the classification. */
+  penaltyMs: number;
+}
+
+/** Finish time with penalties (what the classification is ordered by), or null if not finished. */
+export function classifiedTime(s: Pick<Standing, 'finishTime' | 'penaltyMs'>): number | null {
+  return s.finishTime === null ? null : s.finishTime + s.penaltyMs;
 }
 
 export interface LapEvent {
@@ -55,6 +62,17 @@ export interface DetectionEvent {
   overtake: boolean;
 }
 
+/** A stewards' decision about a car: a track-limits warning, a time penalty, or a deleted lap. */
+export interface StewardEvent {
+  id: number;
+  kind: 'warning' | 'penalty' | 'lapDeleted';
+  reason: 'jumpStart' | 'trackLimits';
+  /** Track-limits strikes so far (0 for a jump start). */
+  strikes: number;
+  /** Penalty added by this decision (ms), 0 for warnings and deleted laps. */
+  penaltyMs: number;
+}
+
 interface Racer {
   id: number;
   x: number;
@@ -73,8 +91,9 @@ interface Racer {
   /** Server time this lap crossed each sector line (index 0 = lap start). */
   splits: (number | null)[];
   history: LapRecord[];
-  /** The current lap had an implausible jump. */
+  /** The current lap had an implausible jump (or was deleted for track limits). */
   invalid: boolean;
+  penaltyMs: number;
 }
 
 const wrap = (d: number, len: number) => ((((d + len / 2) % len) + len) % len) - len / 2;
@@ -133,6 +152,7 @@ export class RaceTracker {
         splits: this.sectorGates.map((_, k) => (k === 0 ? startsAt : null)),
         history: [],
         invalid: false,
+        penaltyMs: 0,
       });
     }
   }
@@ -211,6 +231,18 @@ export class RaceTracker {
     return { id: r.id, lap: r.laps, time, personalBest, raceBest, finished, sectors, valid };
   }
 
+  /** A time penalty, served by adding it to the racer's finish time. */
+  addPenalty(id: number, ms: number): void {
+    const r = this.racers.get(id);
+    if (r) r.penaltyMs += ms;
+  }
+
+  /** The racer's current lap still counts as a lap, but not as a lap time (e.g. track limits in qualifying). */
+  invalidateLap(id: number): void {
+    const r = this.racers.get(id);
+    if (r) r.invalid = true;
+  }
+
   /** Every completed lap of a racer. */
   lapsOf(id: number): readonly LapRecord[] {
     return this.racers.get(id)?.history ?? [];
@@ -254,8 +286,8 @@ export class RaceTracker {
   standings(): Standing[] {
     const rows = [...this.racers.values()].map((r) => ({ r, progress: this.progress(r) }));
     rows.sort((a, b) => {
-      const fa = a.r.finishTime;
-      const fb = b.r.finishTime;
+      const fa = classifiedTime(a.r);
+      const fb = classifiedTime(b.r);
       if (fa !== null || fb !== null) return (fa ?? Infinity) - (fb ?? Infinity);
       return b.progress - a.progress;
     });
@@ -269,6 +301,7 @@ export class RaceTracker {
       bestLap: r.bestLap,
       finishTime: r.finishTime,
       dnf: this.final && r.finishTime === null,
+      penaltyMs: r.penaltyMs,
     }));
   }
 }

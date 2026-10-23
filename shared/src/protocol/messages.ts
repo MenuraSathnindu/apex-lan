@@ -5,7 +5,7 @@ import type { Livery } from '../livery.ts';
 import type { ProfileSummary } from './api.ts';
 import type { ChampionshipView, SeasonDraft, SeasonListItem } from '../championship/types.ts';
 import type { Compound, TyreWearSetting } from '../physics/tyres.ts';
-import type { DetectionEvent, LapEvent, Standing } from '../race/raceTracker.ts';
+import type { DetectionEvent, LapEvent, Standing, StewardEvent } from '../race/raceTracker.ts';
 import type { SessionInfo } from '../race/sessions.ts';
 
 export type RacePhase = 'lobby' | 'countdown' | 'racing' | 'results';
@@ -125,6 +125,8 @@ export type S2C =
   | { t: 'lap'; e: LapEvent }
   /** A racer crossed the overtake detection point: their ERS lap restarts, and overtake mode is on or off. */
   | { t: 'detect'; e: DetectionEvent }
+  /** Race control: track-limits warnings, time penalties, deleted laps. */
+  | { t: 'steward'; e: StewardEvent }
   | { t: 'pong'; clientTime: number; serverTime: number }
   | { t: 'full' }
   /** Result of logging in on the socket (hello with a token, or `auth`). */

@@ -1,4 +1,4 @@
-import { CAR_COLORS } from '@apex/shared';
+import { CAR_COLORS, classifiedTime } from '@apex/shared';
 import { avatarHtml } from './avatar.ts';
 import type { Session } from '../game/session.ts';
 import { formatTime } from './raceHud.ts';
@@ -83,9 +83,10 @@ export function createResults(root: HTMLElement, session: Session, onRaceAgain: 
                 : `+${((s.bestLap - pole) / 1000).toFixed(3)}`
             : s.dnf
             ? 'DNF'
-            : s.id === winner?.id
-              ? formatTime(s.finishTime)
-              : `+${formatTime((s.finishTime ?? 0) - (winner?.finishTime ?? 0))}`;
+            : (s.id === winner?.id
+                ? formatTime(classifiedTime(s))
+                : `+${formatTime((classifiedTime(s) ?? 0) - (classifiedTime(winner!) ?? 0))}`) +
+              (s.penaltyMs ? ` <small class="res-pen">incl. +${s.penaltyMs / 1000}s</small>` : '');
           const best = s.bestLap === fastest && s.bestLap !== null ? `<b class="purple">${formatTime(s.bestLap)}</b>` : formatTime(s.bestLap);
           return `<tr class="${s.id === session.myId ? 'me' : ''}">
             <td>${s.dnf ? '–' : s.pos}</td>

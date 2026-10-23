@@ -1,4 +1,4 @@
-import { APEX_PARK, CAR_COLORS, freeSession, NAME_MAX_LENGTH, RACE, isCompound, presetLivery, sanitizeLivery, type Compound, type ChampionshipView, type Livery, type ProfileSummary, type SeasonListItem, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
+import { APEX_PARK, CAR_COLORS, freeSession, NAME_MAX_LENGTH, RACE, isCompound, presetLivery, sanitizeLivery, type Compound, type ChampionshipView, type Livery, type ProfileSummary, type SeasonListItem, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing, type StewardEvent } from '@apex/shared';
 
 const PROFILE_KEY = 'apex.profile';
 const SESSION_KEY = 'apex.session';
@@ -45,6 +45,8 @@ export class Session {
   standings: Standing[] = [];
   /** Lap events not yet shown by the HUD. */
   readonly lapEvents: LapEvent[] = [];
+  /** Race-control decisions not yet shown by the HUD. */
+  readonly stewardEvents: StewardEvent[] = [];
   /** Overtake detection-point crossings not yet applied to the car. */
   readonly detections: DetectionEvent[] = [];
   /** The profile this connection is logged in as (confirmed by the server), or null for a guest. */
@@ -146,6 +148,10 @@ export class Session {
       case 'detect':
         this.detections.push(msg.e);
         if (this.detections.length > 32) this.detections.shift();
+        return false;
+      case 'steward':
+        this.stewardEvents.push(msg.e);
+        if (this.stewardEvents.length > 32) this.stewardEvents.shift();
         return false;
       case 'full':
         this.full = true;

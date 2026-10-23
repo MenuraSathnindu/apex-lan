@@ -2192,3 +2192,9 @@ body {
 .hud.spectating .hud-power {
   display: none;
 }
+
+.res-pen {
+  margin-left: 4px;
+  color: #ffb347;
+  font-size: 11px;
+}

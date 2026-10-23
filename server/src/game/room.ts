@@ -8,6 +8,7 @@ import {
   CAR_COLORS,
   RACE,
   RaceTracker,
+  classifiedTime,
   type BuiltTrack,
   type Gate,
   buildCheckpoints,
@@ -35,6 +36,7 @@ import {
   type SessionInfo,
   type SessionKind,
   type Standing,
+  type StewardEvent,
   type TyreWearSetting,
   type Compound,
   type Livery,
@@ -471,7 +473,7 @@ export class Room {
           grid: entrant?.grid ?? null,
           dnf: s.dnf,
           laps: s.laps,
-          totalMs: s.finishTime,
+          totalMs: classifiedTime(s),
           bestLapMs: s.bestLap,
           fastestLap: fastest?.id === s.id,
           // No qualifying yet: poles are awarded once grids come from qualifying (championship mode).
@@ -639,7 +641,7 @@ export class Room {
         dnf: qualifying ? false : s.dnf,
         bestLapMs: s.bestLap,
         laps: s.laps,
-        totalMs: s.finishTime,
+        totalMs: classifiedTime(s),
       })),
       fastestLapId: tracker.fastestLap()?.id ?? null,
       lapsOf: (id) => tracker.lapsOf(id),
@@ -666,6 +668,14 @@ export class Room {
       this.race = { ...this.race, finishDeadline: this.now() + RACE.finishGraceMs };
       this.broadcast({ t: 'race', race: this.race });
     }
+  }
+
+  /** Race control: tell everyone, and add any time penalty to the racer's finish. */
+  private steward(e: StewardEvent) {
+    if (e.penaltyMs > 0) this.tracker?.addPenalty(e.id, e.penaltyMs);
+    if (e.kind === 'lapDeleted') this.tracker?.invalidateLap(e.id);
+    this.log(`stewards: ${this.players.get(e.id)?.name ?? e.id} ${e.kind} (${e.reason}${e.strikes ? `, strike ${e.strikes}` : ''})`);
+    this.broadcast({ t: 'steward', e });
   }
 
   /** Switches the room to a track (lobby only): laps reset to the track's default. */
