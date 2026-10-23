@@ -149,4 +149,24 @@ describe('Room broadcast rules', () => {
     const e = h.b.last('sector').e;
     expect(e).toMatchObject({ id: h.idOf(h.a), lap: 1, sector: 0, valid: true });
   });
+
+  it('pitStop during racing changes the tyre and broadcasts the roster', () => {
+    const h = quickRace();
+    h.go();
+    h.room.handle(h.a, { t: 'pitStop', tyre: 'hard' });
+    expect(h.b.last('roster').players.find((p) => p.id === h.idOf(h.a))!.tyre).toBe('hard');
+  });
+
+  it('pitStop in the lobby, during the countdown or with a bad compound is ignored', () => {
+    const h = setup();
+    const a = h.join('Ann');
+    h.room.handle(a, { t: 'pitStop', tyre: 'soft' });
+    expect(a.last('roster').players[0]!.tyre).toBe('medium');
+    h.room.handle(a, { t: 'start' });
+    h.room.handle(a, { t: 'pitStop', tyre: 'soft' });
+    expect(a.last('roster').players[0]!.tyre).toBe('medium');
+    h.go();
+    h.room.handle(a, { t: 'pitStop', tyre: 'slick' as never });
+    expect(a.last('roster').players[0]!.tyre).toBe('medium');
+  });
 });

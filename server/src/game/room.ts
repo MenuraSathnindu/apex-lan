@@ -278,6 +278,12 @@ export class Room {
         );
         break;
       }
+      case 'pitStop':
+        // New tyres from a pit stop: only while racing, only for a car in the session.
+        if (this.race.phase !== 'racing' || !player.entrant || !isCompound(msg.tyre)) return;
+        player.tyre = msg.tyre;
+        this.broadcastRoster();
+        break;
       case 'endRace':
         if (player.id !== this.hostId || this.race.phase === 'lobby') return;
         this.toLobby();

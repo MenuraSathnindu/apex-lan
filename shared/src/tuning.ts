@@ -221,6 +221,13 @@ export const CAR = {
     gravel: { grip: 0.45, drag: 170 },
   },
 
+  /**
+   * Pit lane: speed limiter (m/s, 80 km/h), how long a tyre change holds the car (s), and
+   * "stopped" (m/s). The limiter fades the drive out over `limiterBand` below the limit and brakes
+   * fully at `limiterBrakeSpan` above it.
+   */
+  pit: { speedLimit: 80 / 3.6, stopSeconds: 2.5, stopSpeed: 1, limiterBand: 1.5, limiterBrakeSpan: 5 },
+
   safety: {
     /** Auto-reset after being upside-down / on its side this long (s). */
     autoResetAfter: 3,

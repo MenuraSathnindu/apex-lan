@@ -69,6 +69,10 @@ export interface CarState {
   /** Battery level 0..1 and 1 while deploying (timing tower, boost effects). Absent = 0. */
   e?: number;
   d?: 0 | 1;
+  /** Tyre wear 0..1 (timing tower). Absent = unknown. */
+  tw?: number;
+  /** 1 while in the pit lane (timing tower PIT badge). */
+  pl?: 0 | 1;
 }
 
 /** A relayed car state: who it belongs to and when the server received it. */
@@ -87,6 +91,8 @@ export type C2S =
   | { t: 'setLaps'; laps: number }
   | { t: 'setTyreWear'; wear: TyreWearSetting }
   | { t: 'setTrack'; trackId: string }
+  /** A pit stop fitted new tyres (racing only). */
+  | { t: 'pitStop'; tyre: Compound }
   /** Log this connection in to a profile (login token), or back out to guest (null). */
   | { t: 'auth'; token: string | null }
   // Championship (see server/src/game/championshipRunner.ts). Host-only ones are refused for others.

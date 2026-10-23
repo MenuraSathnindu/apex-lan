@@ -10,7 +10,8 @@ const r = (v: number, digits: number) => {
 const wheelScratch: WheelState[] = [];
 
 /** Snapshot of a simulated car, rounded to keep messages small (mm / 1e-4 rad precision). */
-export function packCarState(v: Vehicle, braking: boolean): CarState {
+/** `inPit`: the car is in the pit lane (timing tower shows PIT). */
+export function packCarState(v: Vehicle, braking: boolean, inPit = false): CarState {
   const p = v.body.translation();
   const q = v.body.rotation();
   const lv = v.body.linvel();
@@ -26,6 +27,8 @@ export function packCarState(v: Vehicle, braking: boolean): CarState {
     a: r(v.aero.blend, 2),
     e: r(v.ers.charge / v.spec.ers.capacity, 2),
     d: v.ers.deploying > 0 ? 1 : 0,
+    tw: r(v.tyres.wear, 2),
+    pl: inPit ? 1 : 0,
   };
 }
 
@@ -44,7 +47,9 @@ export function isValidCarState(s: unknown): s is CarState {
     (c.b === 0 || c.b === 1) &&
     (c.a === undefined || (typeof c.a === 'number' && c.a >= 0 && c.a <= 1)) &&
     (c.e === undefined || (typeof c.e === 'number' && c.e >= 0 && c.e <= 1)) &&
-    (c.d === undefined || c.d === 0 || c.d === 1)
+    (c.d === undefined || c.d === 0 || c.d === 1) &&
+    (c.tw === undefined || (typeof c.tw === 'number' && c.tw >= 0 && c.tw <= 1)) &&
+    (c.pl === undefined || c.pl === 0 || c.pl === 1)
   );
 }
 

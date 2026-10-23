@@ -38,6 +38,8 @@ export interface Vehicle {
   readonly prevVel: Vec3Like;
   /** Set by the game each tick: the car is inside a straight-mode zone of the track. */
   inAeroZone: boolean;
+  /** Speed limiter (m/s): the pit lane sets it, Infinity = off. */
+  speedLimit: number;
   /** What each wheel touched last tick (FL, FR, RL, RR). */
   readonly surfaces: SurfaceKind[];
 }
@@ -126,6 +128,7 @@ export function createVehicle(world: World, pose: SpawnPose, spec: CarSpec = CAR
     tyres: createTyres(),
     prevVel: { x: 0, y: 0, z: 0 },
     inAeroZone: false,
+    speedLimit: Infinity,
     surfaces: ['asphalt', 'asphalt', 'asphalt', 'asphalt'],
   };
 }
@@ -181,6 +184,13 @@ export function stepVehicle(v: Vehicle, input: CarInput, dt: number): void {
   if (brakePedal > 0) {
     if (speed > eng.reverseEngageSpeed) brake = Math.max(brake, brakePedal);
     else if (speed > -eng.reverseMaxSpeed) driveForce -= brakePedal * eng.reverseForce;
+  }
+
+  // --- Speed limiter (pit lane): no drive above the limit, and brake down to it if faster.
+  const pit = spec.pit;
+  if (absSpeed > v.speedLimit - pit.limiterBand) {
+    driveForce *= clamp((v.speedLimit - absSpeed) / pit.limiterBand, 0, 1);
+    if (absSpeed > v.speedLimit) brake = Math.max(brake, clamp((absSpeed - v.speedLimit) / pit.limiterBrakeSpan, 0.2, 1));
   }
 
   const driven = eng.drive === 'rear' ? REAR : eng.drive === 'front' ? FRONT : ([0, 1, 2, 3] as const);

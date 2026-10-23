@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { FIXED_DT } from '../constants.ts';
+import { CAR } from '../tuning.ts';
 import { NEUTRAL_INPUT, type CarInput } from '../input.ts';
 import { createTestGround } from '../track/testGround.ts';
 import { measureHandling, type HandlingReport } from './handlingMetrics.ts';
@@ -123,5 +124,30 @@ describe('handling stays in sane ranges', () => {
     expect(r.handbrakeSlipDeg).toBeLessThan(90);
     expect(r.handbrakeRecoverySlipDeg).toBeLessThan(10);
     expect(r.handbrakeEndSpeedKmh).toBeGreaterThan(20);
+  });
+});
+
+describe('pit lane speed limiter', () => {
+  it('holds the car near 80 km/h at full throttle', () => {
+    const { car, run } = setup();
+    run({}, 1);
+    car.speedLimit = CAR.pit.speedLimit;
+    let max = 0;
+    for (let k = 0; k < 15 * 10; k++) {
+      run({ throttle: 1 }, 0.1);
+      max = Math.max(max, vehicleSpeed(car));
+    }
+    expect(max).toBeLessThanOrEqual(CAR.pit.speedLimit + 1);
+    expect(vehicleSpeed(car)).toBeGreaterThan(CAR.pit.speedLimit - 2);
+  });
+
+  it('a car entering at 150 km/h slows to the limit within 3 s', () => {
+    const { car, run } = setup();
+    run({}, 1);
+    run({ throttle: 1 }, 6);
+    expect(vehicleSpeed(car)).toBeGreaterThan(150 / 3.6);
+    car.speedLimit = CAR.pit.speedLimit;
+    run({ throttle: 1 }, 3);
+    expect(vehicleSpeed(car)).toBeLessThanOrEqual(CAR.pit.speedLimit + 1);
   });
 });
