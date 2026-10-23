@@ -269,3 +269,32 @@ describe('RaceTracker gaps', () => {
     expect(Math.abs(second!.gap! - 6000)).toBeLessThan(2 * DT);
   });
 });
+
+describe('live sector events', () => {
+  it('crossing a sector line emits a sector event', () => {
+    const tracker = new RaceTracker(track, gates, [1], START, 2);
+    drive(tracker, 1, gridS, 20 + APEX_PARK.sectors[1]! + 20, 30, START);
+    const [e, ...rest] = tracker.takeSectors();
+    expect(rest).toEqual([]);
+    expect(e).toMatchObject({ id: 1, lap: 1, sector: 0, valid: true });
+    expect(e!.time).toBe(e!.elapsed);
+    expect(e!.time / 1000).toBeCloseTo((20 + APEX_PARK.sectors[1]!) / 30, 0);
+    expect(tracker.takeSectors()).toEqual([]);
+  });
+
+  it('the last sector comes with the lap', () => {
+    const tracker = new RaceTracker(track, gates, [1], START, 2);
+    const { events } = drive(tracker, 1, gridS, 20 + track.length + 5, 30, START);
+    const sectors = tracker.takeSectors();
+    expect(sectors.map((s) => s.sector)).toEqual([0, 1, 2]);
+    expect(sectors.map((s) => s.time)).toEqual(events[0]!.sectors);
+    expect(sectors[2]!.elapsed).toBe(events[0]!.time);
+  });
+
+  it('sectors of an invalidated lap are marked invalid', () => {
+    const tracker = new RaceTracker(track, gates, [1], START, 2);
+    tracker.invalidateLap(1);
+    drive(tracker, 1, gridS, 20 + APEX_PARK.sectors[1]! + 20, 30, START);
+    expect(tracker.takeSectors()[0]!.valid).toBe(false);
+  });
+});

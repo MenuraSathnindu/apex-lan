@@ -5,7 +5,7 @@ import type { Livery } from '../livery.ts';
 import type { ProfileSummary } from './api.ts';
 import type { ChampionshipView, SeasonDraft, SeasonListItem } from '../championship/types.ts';
 import type { Compound, TyreWearSetting } from '../physics/tyres.ts';
-import type { DetectionEvent, LapEvent, Standing, StewardEvent } from '../race/raceTracker.ts';
+import type { DetectionEvent, LapEvent, SectorEvent, Standing, StewardEvent } from '../race/raceTracker.ts';
 import type { SessionInfo } from '../race/sessions.ts';
 
 export type RacePhase = 'lobby' | 'countdown' | 'racing' | 'results';
@@ -123,6 +123,8 @@ export type S2C =
   /** Live ranking (5 Hz while racing; final once results are in). */
   | { t: 'standings'; standings: Standing[] }
   | { t: 'lap'; e: LapEvent }
+  /** A sector completed (live timing). */
+  | { t: 'sector'; e: SectorEvent }
   /** A racer crossed the overtake detection point: their ERS lap restarts, and overtake mode is on or off. */
   | { t: 'detect'; e: DetectionEvent }
   /** Race control: track-limits warnings, time penalties, deleted laps. */

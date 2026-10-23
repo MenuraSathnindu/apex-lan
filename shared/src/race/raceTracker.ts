@@ -66,6 +66,21 @@ export interface DetectionEvent {
   overtake: boolean;
 }
 
+/** A racer completed a sector (sent live; the last sector completes with the lap). */
+export interface SectorEvent {
+  id: number;
+  /** Lap the sector belongs to (1-based). */
+  lap: number;
+  /** 0-based sector index. */
+  sector: number;
+  /** Sector time (ms). */
+  time: number;
+  /** Lap time so far at the end of this sector (ms). */
+  elapsed: number;
+  /** False if the lap is already invalid (jump, deleted for track limits). */
+  valid: boolean;
+}
+
 /** A stewards' decision about a car: a track-limits warning, a time penalty, or a deleted lap. */
 export interface StewardEvent {
   id: number;
@@ -121,6 +136,7 @@ export class RaceTracker {
   /** crossings[k] = server times of everyone's (k+1)-th detection crossing, in order. */
   private readonly crossings: number[][] = [];
   private pendingDetections: DetectionEvent[] = [];
+  private pendingSectors: SectorEvent[] = [];
   /** Gate index where each sector starts (sector 1 = gate 0). */
   private readonly sectorGates: number[];
 
@@ -183,7 +199,10 @@ export class RaceTracker {
       if (plausible && crossesGate(gate, r.x, r.z, x, z)) {
         r.gateTimes.push(ts);
         const sector = this.sectorGates.indexOf(r.nextGate);
-        if (sector > 0) r.splits[sector] = ts;
+        if (sector > 0) {
+          this.sectorDone(r, sector - 1, ts);
+          r.splits[sector] = ts;
+        }
         if (r.nextGate === 0) events.push(this.completeLap(r, ts));
         r.nextGate = (r.nextGate + 1) % this.gates.length;
       }
@@ -213,7 +232,22 @@ export class RaceTracker {
     return out;
   }
 
+  /** Queues the sector event for sector `k` ending at ts, if its start was seen this lap. */
+  private sectorDone(r: Racer, k: number, ts: number) {
+    const from = r.splits[k];
+    if (from === null || from === undefined || from >= ts) return;
+    this.pendingSectors.push({ id: r.id, lap: r.laps + 1, sector: k, time: ts - from, elapsed: ts - r.lapStart, valid: !r.invalid });
+  }
+
+  /** Sector completions since the last call (for the room to broadcast). */
+  takeSectors(): SectorEvent[] {
+    const out = this.pendingSectors;
+    this.pendingSectors = [];
+    return out;
+  }
+
   private completeLap(r: Racer, ts: number): LapEvent {
+    this.sectorDone(r, this.sectorGates.length - 1, ts);
     const time = ts - r.lapStart;
     // Sector times from the splits, if every one was crossed this lap.
     const marks = [...r.splits, ts];

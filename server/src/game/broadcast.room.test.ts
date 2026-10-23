@@ -141,4 +141,12 @@ describe('Room broadcast rules', () => {
     h.wait(500);
     expect(a.last('standings').standings[0]!.bestLap).toBe(bestBefore);
   });
+
+  it('broadcasts live sector times', () => {
+    const h = quickRace();
+    h.go();
+    h.drive(h.a, -10, 10 + track.def.sectors[1]! + 20, 40);
+    const e = h.b.last('sector').e;
+    expect(e).toMatchObject({ id: h.idOf(h.a), lap: 1, sector: 0, valid: true });
+  });
 });
