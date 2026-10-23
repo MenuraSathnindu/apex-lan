@@ -159,14 +159,12 @@ export class ChampionshipRunner {
   }
 
   private startSession(refuse: (text: string) => void) {
-    let season = this.current!;
+    const season = this.current!;
     if (season.status === 'finished') return refuse('This season is finished.');
     if (!season.entries.length) return refuse('Nobody has entered yet.');
-    if (season.status === 'setup') {
-      this.store.start(season.id);
-      season = this.reloadQuiet()!;
-    }
-    const next = season.next!;
+    // A season in setup starts with round 1 qualifying — but only once that session really runs.
+    const starting = season.status === 'setup';
+    const next = season.next ?? { round: 1, session: 'qualifying' as const };
     const round = season.rounds.find((r) => r.round === next.round)!;
 
     // Entrants here now, in start order: entry order for qualifying; qualifying order for the
@@ -197,8 +195,9 @@ export class ChampionshipRunner {
       (outcome) => this.sessionDone(season.id, next, round.trackId, playerToProfile, starters, outcome),
     );
     if (reason) return refuse(`Session not started: ${reason}.`);
+    if (starting) this.store.start(season.id);
     this.log(`season "${season.name}": round ${next.round} ${next.session}`);
-    this.publish();
+    this.reload();
   }
 
   /** Turns a finished session into championship rows + a career record, and moves the season on. */

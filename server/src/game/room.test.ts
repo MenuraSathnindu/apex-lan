@@ -427,4 +427,31 @@ describe('Room with profiles', () => {
     expect(race.lapTimes[0]).toMatchObject({ profileId: 1, lap: 1 });
     expect(race.lapTimes[0]!.sectors).toHaveLength(3);
   });
+
+  it('stores a lap with a respawn jump as invalid', () => {
+    const { join, room, races, advance } = setupProfiles();
+    const a = join('A', 'token-ann-0123456789');
+    room.handle(a, { t: 'setLaps', laps: 1 });
+    room.handle(a, { t: 'start' });
+    advance(COUNTDOWN_MS + 10);
+    room.update();
+    const track = buildTrack(APEX_PARK);
+    const step = track.samples[1]!.s;
+    const at = (s: number) => track.samples[Math.floor((((s % track.length) + track.length) % track.length) / step) % track.samples.length]!;
+    const feed = (from: number, metres: number) => {
+      for (let d = 0; d < metres; d += 40 / 30) {
+        const smp = at(from + d);
+        advance(1000 / 30);
+        room.handle(a, { t: 'state', s: { ...STATE, p: [smp.x, 0.7, smp.z] } });
+        room.update();
+      }
+    };
+    feed(-15, track.length / 2); // half a lap…
+    feed(track.length / 2 - 15 - 80, track.length / 2 + 110); // …respawn 80 m back, then to the line
+    advance(RACE.finishGraceMs + 10);
+    room.update();
+    expect(races).toHaveLength(1);
+    expect(races[0]!.lapTimes).toEqual([expect.objectContaining({ lap: 1, valid: false })]);
+  });
 });
+

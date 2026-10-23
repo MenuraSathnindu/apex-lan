@@ -103,6 +103,8 @@ interface RunningSession {
   qualiLaps: QualiLap[];
   doneAfterFlag: Set<number>;
   flyingDone: Set<number>;
+  /** Timed qualifying: who was on a lap when the flag fell (taken once, at the flag). */
+  atFlag: Set<number> | null;
 }
 
 /** Moving faster than this at the qualifying flag = still on a lap (m/s). */
@@ -480,7 +482,7 @@ export class Room {
       lapTimes: standings.flatMap((s) => {
         const profileId = this.raceEntrants.get(s.id)?.profileId;
         if (!profileId) return [];
-        return this.tracker!.lapsOf(s.id).map((l) => ({ profileId, lap: l.lap, timeMs: l.time, sectors: l.sectors }));
+        return this.tracker!.lapsOf(s.id).map((l) => ({ profileId, lap: l.lap, timeMs: l.time, sectors: l.sectors, valid: l.valid }));
       }),
     };
     try {
@@ -567,7 +569,7 @@ export class Room {
     // Qualifying has no lap limit: it ends on time (or after the flying laps).
     this.tracker = new RaceTracker(this.track, this.gates, entrants, startsAt, kind === 'qualifying' ? 1_000_000 : laps);
     this.raceEntrants = new Map(entrants.map((id, i) => [id, { profileId: this.players.get(id)!.profile?.id ?? null, grid: i + 1 }]));
-    this.running = { spec: { ...spec, entrants }, onDone, qualiLaps: [], doneAfterFlag: new Set(), flyingDone: new Set() };
+    this.running = { spec: { ...spec, entrants }, onDone, qualiLaps: [], doneAfterFlag: new Set(), flyingDone: new Set(), atFlag: null };
     this.race = { ...this.race, phase: 'countdown', raceId: this.race.raceId + 1, startsAt, finishDeadline: 0, laps, tyreWear: spec.tyreWear, session };
     this.log(`${kind} ${this.race.raceId} starting: ${entrants.length} drivers, ${def.name}`);
     this.broadcastRoster();
@@ -584,14 +586,27 @@ export class Room {
       return tracker.isOver(now, new Set(this.connectedPlayers().map((p) => p.id)));
     }
     const entrants = run.spec.entrants;
-    const onLap = new Set(
-      entrants.filter((id) => {
+    const atFlag = this.flagSnapshot(now);
+    // Still running: on a lap at the flag, not finished it yet, still here.
+    const onLap = new Set([...(atFlag ?? [])].filter((id) => this.players.get(id)?.conn && !run.doneAfterFlag.has(id)));
+    return qualifyingOver(q, now, this.race.startsAt, this.race.session.endsAt, onLap, run.flyingDone, entrants);
+  }
+
+  /**
+   * Timed qualifying: once the flag has fallen, who was on a lap at that moment (moving and heard
+   * from recently). Taken once, so stopping or setting off afterwards changes nothing.
+   */
+  private flagSnapshot(now: number): Set<number> | null {
+    const run = this.running;
+    const endsAt = this.race.session.endsAt;
+    if (!run || !endsAt || now < endsAt) return null;
+    run.atFlag ??= new Set(
+      run.spec.entrants.filter((id) => {
         const p = this.players.get(id);
-        // Moving, recently heard from, and no lap completed since the flag.
-        return p?.conn && p.speed > ON_LAP_SPEED && now - p.stateTs < ON_LAP_FRESH_MS && !run.doneAfterFlag.has(id);
+        return p?.conn && p.speed > ON_LAP_SPEED && now - p.stateTs < ON_LAP_FRESH_MS;
       }),
     );
-    return qualifyingOver(q, now, this.race.startsAt, this.race.session.endsAt, onLap, run.flyingDone, entrants);
+    return run.atFlag;
   }
 
   /** Standings for the HUD: by progress in races, by best lap in qualifying. */
@@ -600,7 +615,7 @@ export class Room {
     const run = this.running;
     const q = this.race.session.qualifying;
     if (this.race.session.kind !== 'qualifying' || !run || !q) return rows;
-    return qualifyingOrder(q, run.qualiLaps, run.spec.entrants).map((o, i) => ({ ...rows.find((r) => r.id === o.id)!, pos: i + 1, bestLap: o.best }));
+    return qualifyingOrder(q, run.qualiLaps, run.spec.entrants).map((o, i) => ({ ...rows.find((r) => r.id === o.id)!, pos: i + 1, bestLap: o.best, dnf: false }));
   }
 
   private finishSession() {
@@ -633,8 +648,13 @@ export class Room {
   private onLap(e: import('@apex/shared').LapEvent) {
     const run = this.running;
     if (run && this.race.session.kind === 'qualifying') {
+      const atFlag = this.flagSnapshot(this.now());
+      if (atFlag) {
+        // After the flag only the lap that was under way at the flag counts.
+        if (!atFlag.has(e.id) || run.doneAfterFlag.has(e.id)) return;
+        run.doneAfterFlag.add(e.id);
+      }
       run.qualiLaps.push({ id: e.id, lap: e.lap, time: e.time, valid: e.valid });
-      if (this.race.session.endsAt && this.now() >= this.race.session.endsAt) run.doneAfterFlag.add(e.id);
       if (e.lap >= 2) run.flyingDone.add(e.id);
       return;
     }

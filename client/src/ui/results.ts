@@ -74,7 +74,14 @@ export function createResults(root: HTMLElement, session: Session, onRaceAgain: 
 
       tbody.innerHTML = session.standings
         .map((s) => {
-          const time = s.dnf
+          const pole = session.standings[0]?.bestLap ?? null;
+          const time = session.race.session.kind === 'qualifying'
+            ? s.bestLap === null
+              ? 'no time'
+              : s.pos === 1 || pole === null
+                ? formatTime(s.bestLap)
+                : `+${((s.bestLap - pole) / 1000).toFixed(3)}`
+            : s.dnf
             ? 'DNF'
             : s.id === winner?.id
               ? formatTime(s.finishTime)

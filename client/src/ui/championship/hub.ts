@@ -34,6 +34,8 @@ export function createChampionshipHub(root: HTMLElement, deps: HubDeps) {
   const { session } = deps;
   let tab: Tab = 'weekend';
   let editing = false;
+  /** A season someone is looking at without it being loaded in the room (read-only, fetched over HTTP). */
+  let browsing: ChampionshipView | null = null;
   const trackName = (id: string) => {
     const t = deps.tracks().find((e) => e.id === id);
     return t ? `${t.name}, ${t.country}` : id;
@@ -67,6 +69,7 @@ export function createChampionshipHub(root: HTMLElement, deps: HubDeps) {
         },
       });
     }
+    if (browsing && !view) return renderBrowsing(browsing);
     if (!view) return renderSeasons();
     title.textContent = view.name;
     body.innerHTML = `
@@ -132,6 +135,43 @@ export function createChampionshipHub(root: HTMLElement, deps: HubDeps) {
     pane.querySelector('.ch-close-season')?.addEventListener('click', () => deps.send({ t: 'champClose' }));
   }
 
+  /** Standings of a stored season, for anyone (not loaded in the room, nothing can be changed). */
+  function renderBrowsing(view: ChampionshipView) {
+    title.textContent = `${view.name} (viewing)`;
+    const t = tab === 'teams' ? 'teams' : 'drivers';
+    body.innerHTML = `
+      <nav class="pf-tabs ch-tabs">
+        <button type="button" class="ch-back">← Seasons</button>
+        <button type="button" data-tab="drivers" aria-selected="${t === 'drivers'}">Drivers</button>
+        <button type="button" data-tab="teams" aria-selected="${t === 'teams'}">Teams</button>
+        ${view.status === 'finished' ? '<button type="button" class="ch-finale">Champion ceremony</button>' : ''}
+      </nav>
+      <div class="ch-tab">${t === 'teams' ? teamsGridHtml(view, trackName) : driversGridHtml(view, trackName)}</div>`;
+    body.querySelector('.ch-back')!.addEventListener('click', () => {
+      browsing = null;
+      render();
+    });
+    for (const b of body.querySelectorAll<HTMLButtonElement>('[data-tab]')) {
+      b.addEventListener('click', () => {
+        tab = b.dataset.tab as Tab;
+        render();
+      });
+    }
+    body.querySelector('.ch-finale')?.addEventListener('click', () => deps.showFinale(view));
+  }
+
+  async function browse(id: number) {
+    try {
+      const res = await fetch(`/api/championships/${id}`);
+      if (!res.ok) throw new Error(String(res.status));
+      browsing = (await res.json()) as ChampionshipView;
+      tab = 'drivers';
+      render();
+    } catch {
+      session.notices.push('Could not load that season.');
+    }
+  }
+
   function renderSeasons() {
     title.textContent = 'Championship';
     const host = session.isHost;
@@ -146,7 +186,11 @@ export function createChampionshipHub(root: HTMLElement, deps: HubDeps) {
               .map(
                 (s) => `<tr><td>${esc(s.name)}</td><td>${s.rounds}</td>
                   <td>${s.status === 'finished' ? 'Finished' : s.status === 'setup' ? 'Not started' : `Next: round ${s.next?.round} ${s.next?.session}`}</td>
-                  <td>${host ? `<button type="button" class="ch-load" data-id="${s.id}">${s.status === 'finished' ? 'View' : 'Resume'}</button>` : ''}</td></tr>`,
+                  <td>${
+                    host
+                      ? `<button type="button" class="ch-load" data-id="${s.id}">${s.status === 'finished' ? 'View' : 'Resume'}</button>`
+                      : `<button type="button" class="ch-browse" data-id="${s.id}">View</button>`
+                  }</td></tr>`,
               )
               .join('')
           : '<tr><td colspan="4">No seasons yet.</td></tr>'
@@ -157,6 +201,9 @@ export function createChampionshipHub(root: HTMLElement, deps: HubDeps) {
     });
     for (const b of body.querySelectorAll<HTMLButtonElement>('.ch-load')) {
       b.addEventListener('click', () => deps.send({ t: 'champLoad', id: Number(b.dataset.id) }));
+    }
+    for (const b of body.querySelectorAll<HTMLButtonElement>('.ch-browse')) {
+      b.addEventListener('click', () => void browse(Number(b.dataset.id)));
     }
   }
 

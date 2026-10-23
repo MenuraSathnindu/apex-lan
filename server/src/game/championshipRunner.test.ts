@@ -177,6 +177,20 @@ describe('ChampionshipRunner', () => {
     expect(t.runner.current!.next).toEqual({ round: 1, session: 'qualifying' });
   });
 
+  it('a refused first start leaves the season in setup (teams stay open)', () => {
+    const t = setup();
+    t.runner.handle(HOST, { t: 'champCreate', draft: draft() });
+    t.runner.handle(1, { t: 'champEnter' });
+    t.refuse('unknown track gone');
+    t.runner.handle(HOST, { t: 'champStartSession' });
+    expect(t.view().status).toBe('setup');
+    t.refuse(null);
+    t.online.set(1, null); // Ann logs out: no entered driver here
+    t.runner.handle(HOST, { t: 'champStartSession' });
+    expect(t.view().status).toBe('setup');
+    expect(t.notices(HOST).at(-1)).toMatch(/No entered driver/);
+  });
+
   it('a host can resume a stored season', () => {
     const t = setup();
     t.runner.handle(HOST, { t: 'champCreate', draft: draft() });

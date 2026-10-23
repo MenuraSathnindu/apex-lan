@@ -53,7 +53,20 @@ function setup() {
   /** Stops a car (speed 0) so it doesn't count as "on a lap". */
   const park = (c: FakeConn) => room.handle(c, { t: 'state', s: { p: [0, 0.7, 0], q: [0, 0, 0, 1], v: [0, 0, 0], wh: new Array(12).fill(0), b: 0 } });
   const go = () => wait(COUNTDOWN_MS + 50);
-  return { room, join, idOf, wait, drive, park, go, now: () => time };
+  /** Several cars at once: each moves along the centreline at its speed (0 = parked where it is). */
+  const together = (cars: { c: FakeConn; s: number; speed: number }[], seconds: number) => {
+    for (let t = 0; t < seconds * 1000; t += DT) {
+      time += DT;
+      for (const car of cars) {
+        car.s += (car.speed * DT) / 1000;
+        const s = ((car.s % track.length) + track.length) % track.length;
+        const smp = track.samples[Math.floor(s / step) % track.samples.length]!;
+        room.handle(car.c, { t: 'state', s: { p: [smp.x, 0.7, smp.z], q: [0, 0, 0, 1], v: [smp.tx * car.speed, 0, smp.tz * car.speed], wh: new Array(12).fill(0), b: 0 } });
+      }
+      room.update();
+    }
+  };
+  return { room, join, idOf, wait, drive, park, go, together, now: () => time };
 }
 
 const quali = (format: SessionInfo['qualifying']): SessionInfo => ({ kind: 'qualifying', laps: 3, qualifying: format, endsAt: 0, round: null });
@@ -81,6 +94,41 @@ describe('Room sessions', () => {
     expect(o.classification.map((r) => r.playerId)).toEqual([idOf(a), idOf(b)]);
     expect(o.classification[0]!.bestLapMs).toBeLessThan(o.classification[1]!.bestLapMs!);
     expect(a.last('race').race.phase).toBe('results');
+  });
+
+  it('qualifying results are not DNFs', () => {
+    const { room, join, idOf, drive, wait, go } = setup();
+    const a = join('Ann');
+    room.runSession({ session: quali({ mode: 'timed', minutes: 5 }), trackId: APEX_PARK.id, tyreWear: 'normal', entrants: [idOf(a)] }, () => {});
+    go();
+    drive(a, -5, track.length * 2 + 10, 45);
+    wait(5 * 60_000);
+    expect(a.last('race').race.phase).toBe('results');
+    expect(a.last('standings').standings.map((s) => s.dnf)).toEqual([false]);
+  });
+
+  it('after the flag only laps under way at the flag count, and only cars moving at the flag can extend the session', () => {
+    const { room, join, idOf, go, together, wait, now } = setup();
+    const a = join('Ann');
+    const b = join('Ben');
+    const done: SessionOutcome[] = [];
+    room.runSession({ session: quali({ mode: 'timed', minutes: 5 }), trackId: APEX_PARK.id, tyreWear: 'normal', entrants: [idOf(a), idOf(b)] }, (o) => done.push(o));
+    go();
+    const endsAt = a.last('race').race.session.endsAt;
+    // Both sit on the grid until 5 s before the flag; then Ben sets off on a slow lap, Ann stays parked.
+    const ann = { c: a, s: -5, speed: 0 };
+    const ben = { c: b, s: -5, speed: 0 };
+    together([ann, ben], (endsAt - now() - 5000) / 1000);
+    ben.speed = 22;
+    together([ann, ben], 6); // Ben is moving when the flag falls, Ann isn't
+    // After the flag Ann drives a fast lap (started after the flag) and keeps going; Ben finishes his.
+    ann.speed = 60;
+    for (let t = 0; t < 120 && !done.length; t++) together([ann, ben], 1);
+    expect(done).toHaveLength(1);
+    const ids = done[0]!.classification;
+    expect(ids.find((r) => r.playerId === idOf(b))!.bestLapMs).not.toBeNull();
+    expect(ids.find((r) => r.playerId === idOf(a))!.bestLapMs).toBeNull();
+    void wait;
   });
 
   it('timed qualifying ends at the flag when nobody is on a lap', () => {
