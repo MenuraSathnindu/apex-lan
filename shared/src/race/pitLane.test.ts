@@ -32,4 +32,13 @@ describe('pitZoneAt', () => {
     const s = plain.samples[10]!;
     expect(pitZoneAt(plain, 10, s.x + s.nx * 20, s.z + s.nz * 20)).toBe('none');
   });
+
+  it('the road is never pit lane, not even along the entry and exit ramps', () => {
+    const side = APEX_PARK.pitLane!.side;
+    for (let i = 0; i < n; i++) {
+      const s = track.samples[i]!;
+      const edge = side > 0 ? s.wl : s.wr;
+      for (const off of [0, side * (edge - 1)]) expect(pitZoneAt(track, i, s.x + s.nx * off, s.z + s.nz * off), `sample ${i} offset ${off}`).toBe('none');
+    }
+  });
 });

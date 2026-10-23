@@ -23,6 +23,10 @@ function fullRun(track: BuiltTrack): [number, number] | null {
  */
 export function pitZoneAt(track: BuiltTrack, i: number, x: number, z: number): PitZone {
   if (!inPitLane(track, i, x, z)) return 'none';
+  // Along the ramps the lane runs right next to the road: only off the road on the pit side counts.
+  const side = track.def.pitLane?.side ?? 1;
+  const s = track.samples[i]!;
+  if (side * ((x - s.x) * s.nx + (z - s.z) * s.nz) <= (side > 0 ? s.wl : s.wr)) return 'none';
   const run = fullRun(track);
   if (!run) return 'lane';
   const n = track.samples.length;
