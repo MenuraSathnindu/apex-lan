@@ -34,6 +34,11 @@ function placementYaw(p: Placement): number {
 export class Scenery {
   readonly group = new THREE.Group();
   private readonly instanced: { mesh: THREE.InstancedMesh; total: number; scalable: boolean }[] = [];
+  /** The five start lamps on the gantry (material swapped to light them), and how many are lit. */
+  private readonly lamps: THREE.Mesh[] = [];
+  private readonly lampOff = new THREE.MeshStandardMaterial({ color: 0x2a0a0a, roughness: 0.4 });
+  private readonly lampOn = new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff1010, emissiveIntensity: 4, roughness: 0.3 });
+  private lit = -1;
 
   constructor(private readonly track: BuiltTrack) {
     const rand = mulberry32(7);
@@ -44,6 +49,19 @@ export class Scenery {
     this.buildGrandstands();
     this.buildPitBuilding();
     this.buildGantry();
+  }
+
+  /** Lights the first `n` start lamps (0 = all off). */
+  setStartLights(n: number): void {
+    if (n === this.lit) return;
+    this.lit = n;
+    this.lamps.forEach((lamp, i) => (lamp.material = i < n ? this.lampOn : this.lampOff));
+  }
+
+  /** Frees what a traversal of the group can't see (the lamp material not in use). */
+  dispose(): void {
+    this.lampOff.dispose();
+    this.lampOn.dispose();
   }
 
   setDensity(density: number): void {
@@ -310,6 +328,17 @@ export class Scenery {
     );
     beam.position.set((left - right) / 2, 6.6, 0);
     gantry.add(beam);
+    // Start lights: five lamps under the beam, facing the grid (behind the line, so -Z).
+    const lampGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.2, 16).rotateX(Math.PI / 2);
+    const housing = new THREE.Mesh(new THREE.BoxGeometry(5 * 0.9 + 0.3, 1.0, 0.4), steel);
+    housing.position.set((left - right) / 2, 5.5, -0.1);
+    gantry.add(housing);
+    for (let k = 0; k < 5; k++) {
+      const lamp = new THREE.Mesh(lampGeo, this.lampOff);
+      lamp.position.set((left - right) / 2 + (k - 2) * 0.9, 5.5, -0.35);
+      this.lamps.push(lamp);
+      gantry.add(lamp);
+    }
     gantry.position.set(smp.x, this.track.lift[0]!, smp.z);
     gantry.rotation.y = Math.atan2(smp.tx, smp.tz);
     gantry.traverse((o) => {

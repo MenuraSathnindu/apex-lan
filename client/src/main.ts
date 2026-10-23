@@ -18,6 +18,7 @@ import {
   initRapier,
   fitTyres,
   lapBudgetLeft,
+  lightsStartAt,
   nearestSample,
   pitZoneAt,
   newErsLap,
@@ -442,7 +443,10 @@ startLoop({
     const { phase, startsAt } = session.race;
     const racing = phase === 'racing' || (phase === 'countdown' && clock.now() >= startsAt);
     const sampled = input.sample();
-    lastInput = racing || phase === 'results' ? sampled : HOLD;
+    // Start lights (races): from the first light you can drive — so you can jump the start. Off
+    // the throttle the car is held (brake at a standstill would select reverse).
+    const lightsOn = phase === 'countdown' && session.race.session.kind !== 'qualifying' && clock.now() >= lightsStartAt(startsAt, session.race.raceId);
+    lastInput = racing || phase === 'results' ? sampled : lightsOn ? (sampled.throttle > 0 ? { ...sampled, reset: false } : HOLD) : HOLD;
     // Pit lane: limiter while in the lane; a stop in the box holds the car while tyres go on.
     if (!spectating()) {
       const p = car.body.translation();
@@ -560,6 +564,7 @@ startLoop({
     });
     lobby.show(session.race.phase === 'lobby' || session.full);
     raceOverlay.update();
+    trackView.setStartLights(raceOverlay.lit);
     raceHud.update();
     results.update();
     quality.frame(frameDt);

@@ -125,6 +125,11 @@ export class TrackView {
     this.group.add(this.scenery.group);
   }
 
+  /** Lights the first `n` lamps of the start gantry. */
+  setStartLights(n: number): void {
+    this.scenery.setStartLights(n);
+  }
+
   static async create(track: BuiltTrack): Promise<TrackView> {
     const view = new TrackView(track);
     ({ asphalt: view.asphalt, grass: view.grass } = await sharedTextures());
@@ -230,5 +235,6 @@ export class TrackView {
       }
     });
     for (const t of this.ownTextures) t.dispose();
+    this.scenery.dispose();
   }
 }

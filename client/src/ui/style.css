@@ -2246,3 +2246,42 @@ body {
   height: 100%;
   background: #4ade80;
 }
+
+.race-lights {
+  position: absolute;
+  top: 9%;
+  left: 50%;
+  display: flex;
+  gap: clamp(6px, 1.4vw, 14px);
+  padding: clamp(8px, 1.4vw, 14px);
+  border-radius: 12px;
+  background: #15171b;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.55);
+  transform: translateX(-50%);
+}
+
+.race-lights[hidden] {
+  display: none;
+}
+
+.race-lamp {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(4px, 0.8vw, 8px);
+  padding: clamp(4px, 0.8vw, 8px);
+  border-radius: 8px;
+  background: #0b0c0e;
+}
+
+.race-lamp i {
+  width: clamp(26px, 5vw, 54px);
+  height: clamp(26px, 5vw, 54px);
+  border-radius: 50%;
+  background: #2a0b0b;
+  transition: background 0.05s;
+}
+
+.race-lamp.on i {
+  background: radial-gradient(circle at 40% 35%, #ff8a8a, #ff1a1a 45%, #b30000);
+  box-shadow: 0 0 22px 4px rgba(255, 30, 30, 0.75);
+}
