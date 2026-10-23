@@ -122,9 +122,9 @@ body {
 
 .hud-power {
   position: absolute;
-  right: 22px;
+  right: 16px;
   bottom: 222px;
-  width: 188px;
+  width: 220px;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -175,6 +175,7 @@ body {
 }
 
 .pw-zone {
+  white-space: nowrap;
   padding: 3px 6px;
   border-radius: 5px;
   background: rgba(15, 143, 91, 0.35);
@@ -666,7 +667,7 @@ body {
 
 .lobby-label {
   display: block;
-  margin: 14px 0 6px;
+  margin: 10px 0 5px;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;

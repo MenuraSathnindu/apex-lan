@@ -31,7 +31,7 @@ export function createPowerHud(root: HTMLElement) {
     <div class="pw-row">
       <span class="pw-aero" data-mode="corner">CORNER</span>
       <span class="pw-tyre" title="Tyre compound and wear"><b class="pw-tyre-dot"></b><span class="pw-tyre-wear"></span></span>
-      <span class="pw-zone" hidden>STRAIGHT ZONE <b class="pw-aero-key"></b></span>
+      <span class="pw-zone" hidden title="Straight zone: the wings may open"><b class="pw-aero-key"></b> open wings</span>
     </div>
     <div class="pw-battery" title="Battery">
       <div class="pw-fill"></div>
