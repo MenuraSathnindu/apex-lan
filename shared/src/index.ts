@@ -29,3 +29,6 @@ export * from './physics/aero.ts';
 export * from './physics/ers.ts';
 export * from './physics/tyres.ts';
 export * from './track/zones.ts';
+export * from './championship/types.ts';
+export * from './championship/calendar.ts';
+export * from './championship/standings.ts';
