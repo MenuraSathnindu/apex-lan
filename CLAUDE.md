@@ -25,6 +25,9 @@ phase. If a decision changes, update that doc in the same change.
 > photos in lobby, timing tower, podium and name tags ([`docs/PROFILES.md`](docs/PROFILES.md)). **Phase 12 championship done
 > (2026-10-23)**: seasons with qualifying (timed / one-shot) → optional sprint → race, teams, drivers' and teams' standings,
 > save/resume, spectators, champion finale (spec `docs/superpowers/specs/2026-10-23-championship-design.md`).
+> **Phase 13 broadcast done (2026-10-23)**: start lights + jump starts, stewards (time penalties, track limits),
+> timing tower, live sectors, pit lane limiter + tyre stops, chequered flag, replays, podium scene
+> (spec `docs/superpowers/specs/2026-10-23-broadcast-design.md`).
 > **Next: Phase 8 — foundations** (refactors R2–R7/R13,
 > binary codec, trademark lint). Phase 6 leftovers: visual body roll, real tree models.
 > Update this line when a phase's exit criteria are met.
@@ -106,7 +109,10 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 - **Tracks:** real circuits are generated offline by `tools/build-tracks.ts` (config + names in `tools/tracks.config.ts`) into committed JSON; runtime code only reads `TrackDef`. The datasets' licences and `ATTRIBUTION.md` live next to the JSON, and each file has a `source` block. Look at the `tools/out/<id>.svg` preview before committing a track: start line (`startShift`) and direction (`reverse`) aren't in the data. Select tracks by id (room `trackId`, `TrackProvider`), never `APEX_PARK` directly. Track style knobs (kerbs, run-off, barriers, pit lane, stands) are `TRACK_STYLE` in `tuning.ts`.
 - **Sessions:** the room runs `Room.runSession(spec, onDone)`: `SessionInfo.kind` is `free | qualifying | sprint | race`; per-kind rules (points, sprint laps, qualifying order and end) are pure functions in `shared/src/race/sessions.ts`, numbers in `CHAMPIONSHIP` (`tuning.ts`). Quick races go through the same path. Non-entrants of a session spectate (`PlayerInfo.entrant/gridSlot`; their states aren't relayed). Laps with a respawn jump are `valid: false` (never a best or a qualifying time).
 - **Championship:** `ChampionshipRunner` (server/src/game) turns season state into the next session and its outcome into rows; `ChampionshipDb` writes each session's results, its career record and the season pointer in one transaction (abandoned sessions write nothing). Standings are never stored: `computeStandings` (shared) is used by server and client. Career stats count `race` rows as races/wins; sprints add points; qualifying P1 is the pole of that round's race.
-- **Broadcast UI** (timing tower, sector bar, lights) is DOM/CSS only — no new full-screen GPU passes; update ≤ 5 Hz from server standings. Start-light delay is seeded from `raceId` so all clients agree.
+- **Broadcast UI** (timing tower, sector bar, lights) is DOM/CSS only — no new full-screen GPU passes; update ≤ 5 Hz from server standings. Start-light delay is seeded from `raceId` so all clients agree (`shared/src/race/startLights.ts`).
+- **Stewards are server-side** (`Room.steward`): jump starts (`JumpStartJudge`, reference = position at the first light) and track limits (`TrackLimits`, pit lane excluded) become `steward` events; penalties are added to the finish time in `RaceTracker` (`classifiedTime`) — results, DB totals and championship order all use it.
+- **Pit lane:** `pitZoneAt` (shared) → client sets `Vehicle.speedLimit` (limiter inside `stepVehicle`), `PitStop` holds the car in the box and sends `pitStop`; the server only accepts it while racing.
+- **Replays / podium** live in `client/src/game/broadcast.ts` (`ReplayRecorder` ring buffer, preallocated; `ReplayPlayer` trackside camera; post-race highlights → `PodiumView` → results). While it runs it owns the camera and poses car views through `RemoteCars.setOverride`.
 - Commits: small, one concern each, message prefixed with phase, e.g. `p1: add handbrake drift`.
 
 ## Build phases (details & exit criteria in ARCHITECTURE §6)
@@ -122,7 +128,7 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 10. **Real-track pipeline** ✅ (except elevation) — `tools/build-tracks.ts` (TUMFTM + Bacinger → `TrackDef` JSON), variable width, sectors, pit lane, aero/detection zones, 45 circuits, track select
 11. **Player profiles** ✅ — SQLite (`better-sqlite3`) on the host, name + PIN login, photo upload, career stats, Hall of Fame
 12. **Championship** ✅ — qualifying / sprint / race weekends, points, driver + team standings, save/resume keyed by `profileId`, spectators, finale
-13. **Broadcast presentation** — start lights, timing tower, sector UI, banners, onboard cam (DOM overlays only)
+13. **Broadcast presentation** ✅ — start lights, stewards, timing tower, sector UI, pit stops, replays, podium (onboard cam / intro cards left)
 14. **Open-source readiness** — LICENSE, README/CONTRIBUTING, disclaimer, licence audit, history scrub, CI release
 
 Details and exit criteria for 8–14: `docs/OPEN_WHEEL_PLAN.md`. Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unless asked; do leave seams for it.

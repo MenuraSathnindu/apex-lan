@@ -188,6 +188,13 @@ Do R1–R7 and R13 in **p8**, R8–R10 and R12 right before the feature that nee
   hand-computed fixture; a player who reconnects with their profile retakes their seat.
 
 ### p13 — Broadcast presentation
+> **Done (2026-10-23)**, spec `docs/superpowers/specs/2026-10-23-broadcast-design.md`: five start
+> lights (hold 1–3 s from `raceId`) with server-side jump-start detection (+5 s), time penalties in
+> the classification, track limits (2 warnings, every 3rd strike +5 s; qualifying deletes the lap),
+> left-side timing tower (gap/interval, tyre + wear, overtake, PIT/+5s/FIN/OUT), live sectors
+> (purple/green/yellow + delta popup), pit lane 80 km/h limiter and 2.5 s tyre stops, chequered flag +
+> cool-down, replays (spectators live, everyone as post-race highlights), 3D podium with photo
+> cards. Not done: driver intro cards, onboard camera.
 - **Start lights:** five-light gantry (client-rendered over the grid, red lights sequence, random
   hold of 0.2–3.0 s seeded from `raceId` so every client agrees, *then* lights out = GO). Replaces
   the 3-2-1 text beeps; server `startsAt` stays the truth. False-start detection (movement

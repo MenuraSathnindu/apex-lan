@@ -140,8 +140,8 @@ and now penalties. No new full-screen GPU passes: Medium must stay at 60 fps.
   shows for 4 s.
 - **Cool-down:** finished drivers keep driving. The HUD says "Cool-down lap".
 - **Podium (results phase of free / sprint / race, at least one finisher):**
-  - `client/src/render/podium.ts` builds a three-step podium beside the start line (on the
-    non-pit side, past the barrier).
+  - `client/src/render/podium.ts` builds a three-step podium on the start straight, 60 m past
+    the line (the grandstands take the space beside it; every other car is hidden).
   - The top-3 cars' views are posed on it. Above each, an HTML card shows the avatar photo,
     position and tag, projected like name tags.
   - An orbiting camera circles the podium.
@@ -151,7 +151,8 @@ and now penalties. No new full-screen GPU passes: Medium must stay at 60 fps.
 
 ## 8. Replays (optional part)
 
-- **Recorder (`client/src/game/replay.ts`, pure):** a ring buffer of the last 10 s at 30 Hz.
+- **Recorder (`client/src/game/replay.ts`, pure):** a ring buffer of the last 12 s at 30 Hz
+  (a clip is cut 3 s after its event, so the buffer outlasts the 10 s clip).
   Each frame stores the server-clock time and, per visible car, `id`, position and quaternion.
   It is fed from the render loop: our car plus visible remote cars.
 - **Clips:**

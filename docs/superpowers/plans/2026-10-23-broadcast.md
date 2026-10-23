@@ -15,7 +15,7 @@ state machine, a replay recorder/player and a podium scene that reuses existing 
 
 ## Global Constraints
 
-- No trademarked names (no "F1"/"Formula 1", real teams, drivers, liveries) anywhere.
+- No trademarked names (no real series, teams, drivers or liveries) anywhere: see the trademark rule in CLAUDE.md.
 - All tuning goes in `shared/src/tuning.ts` (`RACE.lights`, `RACE.jumpStartDistance`,
   `RACE.penaltyMs`, `RACE.trackLimits`, `CAR.pit`, `FX.replay*`, `HUD.*`); no magic numbers in
   logic.

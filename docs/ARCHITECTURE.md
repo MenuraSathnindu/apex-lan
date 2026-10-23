@@ -172,13 +172,16 @@ it into the server build for prod.
 ### 3.3 Messages (`shared/protocol/messages.ts`)
 ```
 C2S: hello{sessionId,name,color,livery?,tyre?} · profile{name,color,livery?,tyre?} · state{s: CarState}
-     · start · setLaps · setTyreWear{wear} · endRace · ping
+     · start · setLaps · setTyreWear{wear} · endRace · ping · pitStop{tyre} (racing only)
 S2C: welcome{playerId,sessionId,hostId,players,race,resume} · roster{hostId,players}
      · race{phase,raceId,startsAt,laps,finishDeadline,tyreWear} · snapshot{cars: (CarState & {id, ts})[]}
      · standings · lap · detect{id,gap,overtake} · pong · full
+     · sector{id,lap,sector,time,elapsed,valid} · steward{id,kind,reason,strikes,penaltyMs}
+Standing also carries penaltyMs, gap (ms behind the leader at the same gate) and lapsDown.
 PlayerInfo = { id, name, color, slot, connected, livery{primary,secondary,accent,number}, tyre }
 CarState = { p[3], q[4], v[3], wh[12] (steer, spin, wheelY ×4), b (braking),
-             a? (wing opening 0..1), e? (battery 0..1), d? (deploying) } — rounded
+             a? (wing opening 0..1), e? (battery 0..1), d? (deploying),
+             tw? (tyre wear 0..1), pl? (in the pit lane) } — rounded
 ```
 
 ### 3.4 Remote cars (`client/src/game/remoteCars.ts`)
