@@ -386,6 +386,7 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
       session.lastDetection = null;
       effects.clear();
       broadcast.reset();
+      pit.stop.newSession();
     }
     if (msg.race.phase === 'lobby') pending = { kind: 'grid' };
     localRaceId = msg.race.raceId;

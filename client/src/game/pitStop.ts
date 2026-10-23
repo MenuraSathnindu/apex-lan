@@ -19,13 +19,20 @@ export class PitStop {
     return this.state === 'stopping';
   }
 
+  /** A session starts: cars that start in the box (qualifying) must leave it before a stop. */
+  newSession(): void {
+    this.state = 'done';
+    this.progress = 0;
+  }
+
   /** Call every physics tick. Returns the compound to fit when a stop completes, else null. */
   step(zone: PitZone, speed: number, racing: boolean, steer: number, current: Compound, dt: number): Compound | null {
     const dir = steer > 0.5 ? 1 : steer < -0.5 ? -1 : 0;
     const edge = dir !== this.lastSteer ? dir : 0;
     this.lastSteer = dir;
     if (!racing) {
-      this.state = 'idle';
+      // A stop under way is dropped; a session start (done) stays done until the car leaves the box.
+      if (this.state === 'stopping') this.state = 'idle';
       this.progress = 0;
       return null;
     }

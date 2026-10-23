@@ -68,4 +68,13 @@ describe('PitStop', () => {
     expect(p.state).toBe('idle');
     expect(p.holding).toBe(false);
   });
+
+  it('a new session starts as if the stop were done: a car parked in the box is not stopped', () => {
+    const p = new PitStop();
+    p.newSession();
+    expect(hold(p, 3, 'box')).toBeNull();
+    expect(p.holding).toBe(false);
+    p.step('lane', 10, true, 0, 'medium', DT);
+    expect(p.state).toBe('idle');
+  });
 });
