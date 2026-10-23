@@ -52,6 +52,9 @@ import { Spectator } from './game/spectator.ts';
 import { PitStop } from './game/pitStop.ts';
 import { Broadcast } from './game/broadcast.ts';
 import { createReplayBadge } from './ui/replayBadge.ts';
+import { createPodiumCards } from './ui/podiumCards.ts';
+import { PodiumView } from './render/podium.ts';
+import { podiumPlacement } from './game/podiumPlacement.ts';
 import { Session } from './game/session.ts';
 import { SettingsStore } from './game/userSettings.ts';
 import { createInputController } from './input/inputController.ts';
@@ -258,6 +261,7 @@ async function switchTrack(id: string) {
     trackView = view;
     applyQuality();
     hud.setTrack(next);
+    podium.place(podiumPlacement(next));
     raceController.setTrack(next, buildCheckpoints(next));
     effects.clear();
     pending = { kind: 'grid' };
@@ -318,7 +322,19 @@ const raceController = new RaceController(track, buildCheckpoints(track), car, s
 /** Pit lane state of our car (zone this tick, and the stop under way). */
 const pit = { zone: 'none' as PitZone, stop: new PitStop(), hint: -1 };
 // TV direction: replays (and, after the race, the podium).
-const broadcast = new Broadcast(session, clock, remoteCars, carView, createReplayBadge($('#replay'), () => broadcast.stop()), spectating);
+const podium = new PodiumView();
+podium.place(podiumPlacement(track));
+gfx.scene.add(podium.group);
+const broadcast = new Broadcast(
+  session,
+  clock,
+  remoteCars,
+  carView,
+  podium,
+  createReplayBadge($('#replay'), () => broadcast.skip()),
+  createPodiumCards($('#podium-cards'), () => broadcast.skip()),
+  spectating,
+);
 quality.onChange((level) => (broadcast.recording = level !== 'low'));
 broadcast.recording = quality.level !== 'low';
 /** Whose timing the HUD shows: our car, or the one we're watching (set every frame). */
@@ -340,6 +356,7 @@ const results = createResults(
   session,
   () => socket.send({ t: 'endRace' }),
   () => hub.show('drivers'),
+  () => broadcast.resultsReady,
 );
 
 /** Race we're currently driving in (0 = none yet). Lets a quick reconnect keep our car where it is. */
@@ -480,7 +497,9 @@ startLoop({
         carView.setTyreColor(CAR.tyres.compounds[fitted].color);
         socket.send({ t: 'pitStop', tyre: fitted });
       }
-      if (pit.stop.holding) lastInput = HOLD;
+      if (pit.stop.holding || broadcast.holdInput) lastInput = HOLD;
+    // How high our car sits on the road (for posing it on the podium).
+    if (phase === 'countdown' && !lightsOn && Math.abs(vehicleSpeed(car)) < 0.1) broadcast.restHeight = car.body.translation().y - track.lift[0]!;
     }
     if (racing && lastInput.reset) {
       // During a race, R puts you back at the last checkpoint instead of resetting in place.
@@ -549,6 +568,7 @@ startLoop({
     const gearbox = localFx.drivetrain;
     // Our own speedo / power panel mean nothing while watching someone else.
     $('#hud').classList.toggle('spectating', watching);
+    $('#hud').classList.toggle('cinematic', broadcast.holdInput);
     if (watching) voice.silence();
     else voice.update({ rpm: gearbox.rpm, load: gearbox.load, slip: localFx.screechSlip, scrape: localFx.scrape, speed: Math.abs(speed) });
     for (; localFx.upshifts > 0; localFx.upshifts--) voice.pop();

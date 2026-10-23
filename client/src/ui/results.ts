@@ -7,7 +7,7 @@ const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 /** Results screen: podium for the top 3, full table, and the host's "Race again". */
-export function createResults(root: HTMLElement, session: Session, onRaceAgain: () => void, onStandings: () => void = () => {}) {
+export function createResults(root: HTMLElement, session: Session, onRaceAgain: () => void, onStandings: () => void = () => {}, ready: () => boolean = () => true) {
   root.innerHTML = `
     <div class="res-panel">
       <h1 class="res-title">Results</h1>
@@ -32,7 +32,8 @@ export function createResults(root: HTMLElement, session: Session, onRaceAgain: 
 
   return {
     update() {
-      const show = session.race.phase === 'results';
+      // After a race the podium scene comes first (ready() says when the table may show).
+      const show = session.race.phase === 'results' && ready();
       root.hidden = !show;
       if (!show) return;
       again.hidden = !session.isHost;

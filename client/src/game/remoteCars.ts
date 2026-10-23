@@ -217,6 +217,9 @@ export class RemoteCars {
         const shown = this.override(car.id, car);
         car.view.root.visible = shown;
         if (shown) car.view.update(car.pos, car.quat, car.wheels);
+        // Posed, not driving: no engine, no tyre smoke from stale motion.
+        car.speed = 0;
+        car.slip = 0;
         car.voice?.silence();
         this.tags.place(car.id, car.pos, camera, false);
         continue;
