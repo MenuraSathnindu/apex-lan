@@ -1,4 +1,4 @@
-import { APEX_PARK, CAR_COLORS, NAME_MAX_LENGTH, RACE, isCompound, presetLivery, sanitizeLivery, type Compound, type Livery, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
+import { APEX_PARK, CAR_COLORS, NAME_MAX_LENGTH, RACE, isCompound, presetLivery, sanitizeLivery, type Compound, type Livery, type ProfileSummary, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
 
 const PROFILE_KEY = 'apex.profile';
 const SESSION_KEY = 'apex.session';
@@ -47,6 +47,12 @@ export class Session {
   readonly lapEvents: LapEvent[] = [];
   /** Overtake detection-point crossings not yet applied to the car. */
   readonly detections: DetectionEvent[] = [];
+  /** The profile this connection is logged in as (confirmed by the server), or null for a guest. */
+  account: ProfileSummary | null = null;
+  /** Why the last login on the socket failed (shown in the lobby), or null. */
+  authError: string | null = null;
+  /** Login token to present in `hello` (set by the account client). */
+  loginToken: () => string | null = () => null;
   /** Result of our own last detection-point crossing (gap to the car ahead, overtake on/off). */
   lastDetection: DetectionEvent | null = null;
   profile: Profile = read<Profile>(() => localStorage, PROFILE_KEY) ?? { name: '', color: 0 };
@@ -73,7 +79,7 @@ export class Session {
   }
 
   hello(): C2S {
-    return { t: 'hello', sessionId: this.sessionId, name: this.profile.name, color: this.profile.color, livery: this.livery, tyre: this.tyre };
+    return { t: 'hello', sessionId: this.sessionId, name: this.profile.name, color: this.profile.color, livery: this.livery, tyre: this.tyre, token: this.loginToken() };
   }
 
   /** Our paint scheme: the server's copy once joined, else what we last chose (validated). */
@@ -119,6 +125,10 @@ export class Session {
       case 'lap':
         this.lapEvents.push(msg.e);
         return true;
+      case 'auth':
+        this.account = msg.ok ? msg.profile : null;
+        this.authError = msg.ok ? null : (msg.reason ?? 'login failed');
+        return true;
       case 'detect':
         this.detections.push(msg.e);
         if (this.detections.length > 32) this.detections.shift();
@@ -134,5 +144,6 @@ export class Session {
   onDisconnect(): void {
     this.connected = false;
     this.myId = 0;
+    this.account = null;
   }
 }

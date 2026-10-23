@@ -160,7 +160,7 @@ export class RemoteCars {
       }
       car.color = p.color;
       car.view.setTyreColor(CAR.tyres.compounds[p.tyre].color);
-      this.tags.set(p.id, p.name, hex(CAR_COLORS[p.color] ?? 0xffffff), p.connected ? '' : 'reconnecting…');
+      this.tags.set(p.id, p.name, hex(p.livery.primary ?? CAR_COLORS[p.color] ?? 0xffffff), p.connected ? '' : 'reconnecting…', p.photo);
     }
     for (const [id, car] of this.cars) {
       if (keep.has(id)) continue;

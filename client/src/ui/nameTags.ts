@@ -5,11 +5,16 @@ const projected = new THREE.Vector3();
 
 /** HTML name labels that float above cars (crisp text, unaffected by post-processing). */
 export class NameTags {
-  private readonly tags = new Map<number, { el: HTMLElement; name: HTMLElement; dot: HTMLElement }>();
+  private readonly tags = new Map<number, { el: HTMLElement; name: HTMLElement; dot: HTMLElement; img: HTMLImageElement }>();
 
   constructor(private readonly root: HTMLElement) {}
 
-  set(id: number, name: string, color: string, status = ''): void {
+  /** Show profile photos in the tags (a setting). */
+  setPhotosVisible(on: boolean): void {
+    this.root.classList.toggle('no-photos', !on);
+  }
+
+  set(id: number, name: string, color: string, status = '', photo: string | null = null): void {
     let tag = this.tags.get(id);
     if (!tag) {
       const el = document.createElement('div');
@@ -17,14 +22,25 @@ export class NameTags {
       const dot = document.createElement('span');
       dot.className = 'name-tag-dot';
       const label = document.createElement('span');
-      el.append(dot, label);
+      const img = document.createElement('img');
+      img.className = 'name-tag-photo';
+      img.alt = '';
+      img.decoding = 'async';
+      el.append(img, dot, label);
       this.root.append(el);
-      tag = { el, name: label, dot };
+      tag = { el, name: label, dot, img };
       this.tags.set(id, tag);
     }
     const text = status ? `${name} · ${status}` : name;
     if (tag.name.textContent !== text) tag.name.textContent = text;
     tag.dot.style.background = color;
+    if (photo) {
+      if (tag.img.getAttribute('src') !== photo) tag.img.src = photo;
+      tag.img.hidden = false;
+    } else {
+      tag.img.hidden = true;
+      tag.img.removeAttribute('src');
+    }
   }
 
   remove(id: number): void {

@@ -1,5 +1,6 @@
 import { CAR_COLORS } from '@apex/shared';
 import type { RaceController } from '../game/raceController.ts';
+import { avatarHtml } from './avatar.ts';
 import type { Session } from '../game/session.ts';
 import type { ServerClock } from '../net/clock.ts';
 
@@ -84,7 +85,7 @@ export function createRaceHud(root: HTMLElement, session: Session, clock: Server
       }
 
       // Ranking list (only rebuilt when it changes).
-      const key = session.standings.map((s) => `${s.id}:${s.laps}:${s.finishTime ?? ''}`).join('|') + session.players.length;
+      const key = session.standings.map((s) => `${s.id}:${s.laps}:${s.finishTime ?? ''}`).join('|') + session.players.map((p) => `${p.id}${p.photo}${p.tag}`).join();
       if (key !== rankKey) {
         rankKey = key;
         rankEl.innerHTML = session.standings
@@ -93,7 +94,8 @@ export function createRaceHud(root: HTMLElement, session: Session, clock: Server
             const status = s.finishTime !== null ? 'FIN' : `L${Math.min(s.laps + 1, laps)}`;
             return `<li class="${s.id === session.myId ? 'me' : ''} ${p?.connected === false ? 'away' : ''}">
               <span class="rk-pos">${s.pos}</span>
-              <span class="rk-dot" style="background:${hex(CAR_COLORS[p?.color ?? 0] ?? 0xffffff)}"></span>
+              ${avatarHtml({ photo: p?.photo ?? null, tag: p?.tag ?? '?', color: p?.livery.primary ?? CAR_COLORS[p?.color ?? 0] }, 20, 'rk-avatar')}
+              <span class="rk-tag">${esc(p?.tag ?? '')}</span>
               <span class="rk-name">${esc(p?.name ?? `#${s.id}`)}</span>
               <span class="rk-status">${status}</span></li>`;
           })

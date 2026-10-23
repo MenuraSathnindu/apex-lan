@@ -16,6 +16,7 @@ import {
 } from '@apex/shared';
 import type { Session } from '../game/session.ts';
 import { drawTrackPreview } from './trackSelect.ts';
+import { avatarHtml } from './avatar.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
@@ -27,6 +28,9 @@ export interface LobbyHandlers {
   onTyreWear(wear: TyreWearSetting): void;
   /** Host clicked "Change": open the track picker. */
   onChooseTrack(): void;
+  onAccount(): void;
+  onHallOfFame(): void;
+  onShowProfile(profileId: number): void;
 }
 
 /** Pre-race screen: name, colour, who's here, and the host's Start button. */
@@ -41,6 +45,11 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
         <div class="lobby-track-info"><b class="lobby-track-name"></b><span class="lobby-track-meta"></span></div>
         <button type="button" class="lobby-track-change">Change</button>
       </div>
+      <div class="lobby-account">
+        <button type="button" class="lobby-account-btn"></button>
+        <button type="button" class="lobby-hof-btn">🏆 Hall of Fame</button>
+      </div>
+      <p class="lobby-auth-error" role="alert" hidden></p>
       <label class="lobby-label" for="lobby-name">Your name</label>
       <input id="lobby-name" class="lobby-name" maxlength="${NAME_MAX_LENGTH}" autocomplete="off" spellcheck="false" placeholder="Driver name" />
       <div class="lobby-label">Car colour</div>
@@ -136,6 +145,14 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
   const trackChange = root.querySelector<HTMLButtonElement>('.lobby-track-change')!;
   trackChange.addEventListener('click', () => handlers.onChooseTrack());
   let shownTrack = '';
+  const accountBtn = root.querySelector<HTMLButtonElement>('.lobby-account-btn')!;
+  const authError = root.querySelector<HTMLElement>('.lobby-auth-error')!;
+  accountBtn.addEventListener('click', () => handlers.onAccount());
+  root.querySelector('.lobby-hof-btn')!.addEventListener('click', () => handlers.onHallOfFame());
+  list.addEventListener('click', (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-profile]');
+    if (row) handlers.onShowProfile(Number(row.dataset.profile));
+  });
   start.addEventListener('click', () => handlers.onStart());
   const lapsValue = root.querySelector<HTMLElement>('.lobby-laps-value')!;
   const lapsHint = root.querySelector<HTMLElement>('.lobby-laps-hint')!;
@@ -162,7 +179,16 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
     }
     // Show the server's default ("Player 3") as a placeholder so typing replaces it.
     if (session.me) nameInput.placeholder = session.me.name;
-    if (document.activeElement !== nameInput) nameInput.value = session.profile.name;
+    // Logged in: the profile's name is fixed (it's the login).
+    const account = session.account;
+    nameInput.disabled = !!account;
+    if (account) nameInput.value = account.name;
+    else if (document.activeElement !== nameInput) nameInput.value = session.profile.name;
+    accountBtn.innerHTML = account
+      ? `${avatarHtml({ ...account, color: account.livery.primary }, 22)} ${esc(account.name)} · my profile`
+      : '👤 Log in / create a profile';
+    authError.hidden = !session.authError;
+    authError.textContent = session.authError ?? '';
     const livery = session.livery;
     for (const input of liveryInputs) {
       if (document.activeElement !== input) input.value = hex(livery[input.dataset.livery as 'primary' | 'secondary' | 'accent']);
@@ -184,9 +210,9 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
         const tags = [p.id === session.hostId ? '<span class="badge">host</span>' : '', p.id === session.myId ? '<span class="badge you">you</span>' : '']
           .filter(Boolean)
           .join('');
-        return `<li class="${p.connected ? '' : 'away'}">
+        return `<li class="${p.connected ? '' : 'away'} ${p.profileId ? 'has-profile' : ''}" ${p.profileId ? `data-profile="${p.profileId}" title="View profile"` : ''}>
           <span class="slot">${p.slot + 1}</span>
-          <span class="dot" style="background:${hex(p.livery.primary)}"></span>
+          ${avatarHtml({ photo: p.photo, tag: p.tag, color: p.livery.primary }, 26)}
           <span class="num">#${p.livery.number}</span>
           <span class="name">${esc(p.name)}</span>${tags}
           ${p.connected ? '' : '<span class="status">reconnecting…</span>'}

@@ -19,6 +19,8 @@ export interface UserSettings {
   bindings: Bindings;
   /** Open the wings by themselves inside straight-mode zones. */
   aeroAuto: boolean;
+  /** Profile photos in the name tags above cars. */
+  showPhotos: boolean;
 }
 
 export const CAMERA_LIMITS = { distance: [0.7, 1.6], fovOffset: [-10, 15] } as const;
@@ -32,6 +34,7 @@ export function defaultSettings(): UserSettings {
     showFps: false,
     bindings: sanitizeBindings(null),
     aeroAuto: false,
+    showPhotos: true,
   };
 }
 
@@ -42,7 +45,7 @@ const num = (v: unknown, lo: number, hi: number, fallback: number) =>
 export function sanitizeSettings(raw: unknown): UserSettings {
   const d = defaultSettings();
   if (typeof raw !== 'object' || raw === null) return d;
-  const r = raw as { audio?: Record<string, unknown>; camera?: Record<string, unknown>; showFps?: unknown; bindings?: unknown; aeroAuto?: unknown };
+  const r = raw as { audio?: Record<string, unknown>; camera?: Record<string, unknown>; showFps?: unknown; bindings?: unknown; aeroAuto?: unknown; showPhotos?: unknown };
   const a = r.audio ?? {};
   const c = r.camera ?? {};
   return {
@@ -62,6 +65,7 @@ export function sanitizeSettings(raw: unknown): UserSettings {
     showFps: r.showFps === true,
     bindings: sanitizeBindings(r.bindings),
     aeroAuto: r.aeroAuto === true,
+    showPhotos: r.showPhotos !== false,
   };
 }
 

@@ -4,6 +4,7 @@
 //   npm run bots              → 3 bots against ws://localhost:3000/ws
 //   npm run bots -- 7         → 7 bots (fills an 8-player room with you)
 //   npm run bots -- 7 ws://192.168.1.23:3000/ws
+//   APEX_BOT_LOGIN="Kasun:1111,Nimal:2222" npm run bots -- 2   → bots log in to these profiles
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
@@ -85,7 +86,21 @@ function startBot(n: number) {
     speed = 0;
   };
 
-  ws.on('open', () => send({ t: 'hello', sessionId: null, name: `Bot ${n}`, color: n % CAR_COLORS.length }));
+  ws.on('open', async () => {
+    // Optional: log in to a profile (name:pin from APEX_BOT_LOGIN) so the bot has a photo and stats.
+    const login = process.env.APEX_BOT_LOGIN?.split(',')[n - 1]?.split(':');
+    let token: string | null = null;
+    if (login?.length === 2) {
+      const res = await fetch(url.replace(/^ws/, 'http').replace(/\/ws$/, '/api/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: login[0], pin: login[1] }),
+      }).catch(() => null);
+      token = res?.ok ? ((await res.json()) as { token: string }).token : null;
+      if (!token) console.log(`Bot ${n}: could not log in as ${login[0]}`);
+    }
+    send({ t: 'hello', sessionId: null, name: `Bot ${n}`, color: n % CAR_COLORS.length, token });
+  });
   ws.on('message', (data) => {
     const msg = decodeS2C(data.toString());
     if (msg.t === 'welcome') {

@@ -1,4 +1,5 @@
 import { CAR_COLORS } from '@apex/shared';
+import { avatarHtml } from './avatar.ts';
 import type { Session } from '../game/session.ts';
 import { formatTime } from './raceHud.ts';
 
@@ -34,14 +35,19 @@ export function createResults(root: HTMLElement, session: Session, onRaceAgain: 
       const host = session.players.find((p) => p.id === session.hostId);
       wait.textContent = session.isHost ? '' : `Waiting for ${host?.name ?? 'the host'} to start the next race…`;
 
-      const k = JSON.stringify(session.standings) + session.players.map((p) => p.name + p.color).join();
+      const k = JSON.stringify(session.standings) + session.players.map((p) => p.name + p.color + p.photo + p.tag).join();
       if (k === key) return;
       key = k;
 
       const winner = session.standings[0];
       const fastest = Math.min(...session.standings.map((s) => s.bestLap ?? Infinity));
       const nameOf = (id: number) => esc(session.playerName(id));
-      const colorOf = (id: number) => hex(CAR_COLORS[session.players.find((p) => p.id === id)?.color ?? 0] ?? 0xffffff);
+      const playerOf = (id: number) => session.players.find((p) => p.id === id);
+      const colorOf = (id: number) => hex(playerOf(id)?.livery.primary ?? CAR_COLORS[0]);
+      const avatarOf = (id: number, size: number) => {
+        const p = playerOf(id);
+        return avatarHtml({ photo: p?.photo ?? null, tag: p?.tag ?? '?', color: p?.livery.primary }, size, 'res-avatar');
+      };
 
       // Podium order on screen: 2nd, 1st, 3rd.
       podium.innerHTML = [1, 0, 2]
@@ -49,7 +55,7 @@ export function createResults(root: HTMLElement, session: Session, onRaceAgain: 
         .filter((s) => s && !s.dnf)
         .map(
           (s) => `<div class="res-step p${s!.pos}">
-            <div class="res-car" style="background:${colorOf(s!.id)}"></div>
+            ${avatarOf(s!.id, s!.pos === 1 ? 84 : 68)}
             <div class="res-name">${nameOf(s!.id)}</div>
             <div class="res-block"><span>${s!.pos}</span></div>
           </div>`,
@@ -66,7 +72,7 @@ export function createResults(root: HTMLElement, session: Session, onRaceAgain: 
           const best = s.bestLap === fastest && s.bestLap !== null ? `<b class="purple">${formatTime(s.bestLap)}</b>` : formatTime(s.bestLap);
           return `<tr class="${s.id === session.myId ? 'me' : ''}">
             <td>${s.dnf ? '–' : s.pos}</td>
-            <td><span class="dot" style="background:${colorOf(s.id)}"></span>${nameOf(s.id)}</td>
+            <td><span class="dot" style="background:${colorOf(s.id)}"></span>${avatarOf(s.id, 22)} ${nameOf(s.id)}</td>
             <td>${time}</td><td>${best}</td></tr>`;
         })
         .join('');

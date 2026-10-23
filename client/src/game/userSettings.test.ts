@@ -28,6 +28,11 @@ describe('user settings', () => {
     expect(old.bindings.aero).toEqual(['KeyE']);
   });
 
+  it('shows photos above cars unless turned off', () => {
+    expect(sanitizeSettings({}).showPhotos).toBe(true);
+    expect(sanitizeSettings({ showPhotos: false }).showPhotos).toBe(false);
+  });
+
   it('rejects unknown camera modes', () => {
     expect(sanitizeSettings({ camera: { mode: 'drone' } }).camera.mode).toBe('chase');
   });

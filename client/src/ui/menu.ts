@@ -57,6 +57,7 @@ export function createMenu(root: HTMLElement, store: SettingsStore, quality: Qua
           </div>
           <p class="menu-status"></p>
           <label class="menu-check"><input type="checkbox" data-fps /> Show FPS counter</label>
+          <label class="menu-check"><input type="checkbox" data-photos /> Show player photos above cars</label>
         </section>
 
         <section class="menu-section" data-tab="controls">
@@ -122,6 +123,7 @@ export function createMenu(root: HTMLElement, store: SettingsStore, quality: Qua
     }
     $<HTMLInputElement>('[data-mute]').checked = s.audio.muted;
     $<HTMLInputElement>('[data-fps]').checked = s.showFps;
+    $<HTMLInputElement>('[data-photos]').checked = s.showPhotos;
     $<HTMLInputElement>('[data-aero-auto]').checked = s.aeroAuto;
     for (const b of $$<HTMLButtonElement>('.menu-key[data-action]')) {
       if (b === listening) continue;
@@ -168,6 +170,7 @@ export function createMenu(root: HTMLElement, store: SettingsStore, quality: Qua
   }
   $<HTMLInputElement>('[data-mute]').addEventListener('change', (e) => store.update((s) => (s.audio.muted = (e.target as HTMLInputElement).checked)));
   $<HTMLInputElement>('[data-aero-auto]').addEventListener('change', (e) => store.update((s) => (s.aeroAuto = (e.target as HTMLInputElement).checked)));
+  $<HTMLInputElement>('[data-photos]').addEventListener('change', (e) => store.update((s) => (s.showPhotos = (e.target as HTMLInputElement).checked)));
   $<HTMLInputElement>('[data-fps]').addEventListener('change', (e) => store.update((s) => (s.showFps = (e.target as HTMLInputElement).checked)));
   for (const r of $$<HTMLInputElement>('input[name=quality]')) {
     r.addEventListener('change', () => {

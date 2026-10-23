@@ -43,6 +43,7 @@ import { FrameProfiler } from './core/profiler.ts';
 import { LocalCarFx } from './game/localCarFx.ts';
 import { RaceController } from './game/raceController.ts';
 import { RemoteCars } from './game/remoteCars.ts';
+import { AccountClient } from './game/accountClient.ts';
 import { Session } from './game/session.ts';
 import { SettingsStore } from './game/userSettings.ts';
 import { createInputController } from './input/inputController.ts';
@@ -67,6 +68,7 @@ import { createResults } from './ui/results.ts';
 import { createFpsCounter } from './ui/fpsCounter.ts';
 import { createMenu } from './ui/menu.ts';
 import { createTrackSelect } from './ui/trackSelect.ts';
+import { createProfileScreen } from './ui/profileScreen.ts';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const loading = createLoadingScreen($('#loading'));
@@ -74,6 +76,9 @@ const loading = createLoadingScreen($('#loading'));
 // --- Session + networking. Connect right away; messages that arrive while assets load
 // update the session and are applied once the world exists.
 const session = new Session();
+// Player profile login, remembered in this browser; presented to the room in `hello`.
+const account = new AccountClient();
+session.loginToken = () => account.token;
 const clock = new ServerClock();
 const status = createNetStatus($('#net-status'));
 let world: ReturnType<typeof createWorld> | null = null;
@@ -171,6 +176,7 @@ settings.subscribe((s) => {
   cameraRig.options = s.camera;
   cameraRig.setMode(s.camera.mode);
   fpsCounter.show(s.showFps);
+  nameTags.setPhotosVisible(s.showPhotos);
 });
 
 // --- Tracks: the built-in ones plus everything generated into /tracks (index.json).
@@ -184,6 +190,18 @@ void fetch('/tracks/index.json')
   .catch(() => console.warn('[tracks] no generated tracks (client/public/tracks/index.json) — only the built-in one.'));
 const trackSelect = createTrackSelect($('#track-select'), (trackId) => socket.send({ t: 'setTrack', trackId }));
 const trackLoading = $('#track-loading');
+const profiles = createProfileScreen($('#profiles'), {
+  account,
+  me: () => session.account,
+  currentLivery: () => session.livery,
+  trackName: (id) => {
+    const t = trackList.find((e) => e.id === id);
+    return t ? `${t.name}, ${t.country}` : id;
+  },
+  // Tell the room who we are now; it answers with an 'auth' message (handled in applyRoom).
+  onLogin: () => socket.send({ t: 'auth', token: account.token }),
+  onLogout: () => socket.send({ t: 'auth', token: null }),
+});
 
 /** The track the room wants; the one we have may still be loading. */
 let wantedTrack = track.def.id;
@@ -238,6 +256,15 @@ const lobby = createLobby($('#lobby'), session, {
   onChooseTrack() {
     trackSelect.show(trackList, session.race.trackId);
   },
+  onAccount() {
+    profiles.showAccount();
+  },
+  onHallOfFame() {
+    profiles.showHallOfFame(session.race.trackId);
+  },
+  onShowProfile(id) {
+    profiles.showProfile(id);
+  },
 }, () => trackList);
 const raceOverlay = createRaceOverlay(
   $('#race'),
@@ -284,6 +311,20 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
   // In the lobby the car shows the compound you picked; during a race, the set you started on.
   if (session.race.phase === 'lobby') car.tyres.compound = session.tyre;
   carView.setTyreColor(CAR.tyres.compounds[car.tyres.compound].color);
+  if (msg.t === 'auth') {
+    // A token the host no longer knows (e.g. its database was reset): forget it.
+    if (!msg.ok && account.token && msg.reason?.startsWith('unknown')) account.forget();
+    profiles.refresh();
+  }
+  if (msg.t === 'roster' && session.account && session.me?.profileId === session.account.id) {
+    // Tag / photo / livery edits come back through the roster: keep our account in step.
+    const me = session.me;
+    const next = { ...session.account, tag: me.tag, photo: me.photo, livery: me.livery };
+    if (JSON.stringify(next) !== JSON.stringify(session.account)) {
+      session.account = next;
+      profiles.refresh();
+    }
+  }
   remoteCars.syncRoster(session.players, session.myId);
   if (session.race.trackId !== wantedTrack) void switchTrack(session.race.trackId);
   lobby.update();
