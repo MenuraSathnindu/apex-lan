@@ -12,8 +12,21 @@ phase. If a decision changes, update that doc in the same change.
 > (2026-10-18)**: Web Audio engine with a sound gearbox, tyre screech, scrape, wind, impacts, countdown beeps;
 > skid marks, tyre smoke, sparks; speedometer/gear/minimap HUD; pause menu (volumes, quality, key bindings,
 > camera); Medium profiled to hold 60 fps on the host's Intel UHD iGPU. Most of Phase 6 done.
-> **Next: Phase 8 — robustness** (binary codec, quantization, 2nd track). Phase 6 leftovers: visual body roll,
-> real tree models. Update this line when a phase's exit criteria are met.
+> **Direction change (2026-10-23): becoming an open-wheel racing game** with real-world circuits, player
+> profiles and a championship mode. Full plan, refactor list and open decisions:
+> [`docs/OPEN_WHEEL_PLAN.md`](docs/OPEN_WHEEL_PLAN.md). **Next: Phase 8 — foundations** (refactors R1–R7/R13
+> from the plan, binary codec, trademark lint). Phase 6 leftovers: visual body roll, real tree models.
+> Update this line when a phase's exit criteria are met.
+
+## Trademark rule (non-negotiable — the project will be open source)
+No trademarked names or marks of any real racing series, governing body, team, driver, sponsor or car
+manufacturer — in code, comments, UI text, docs, asset names or contents, credits, or commit messages:
+no series names/abbreviations, no real team/driver/car-model names, no logos, liveries or traced fonts.
+- Tracks are named by city/country (`"Monza, Italy"`). Teams, drivers and liveries are **fictional**.
+- Regulation concepts are fine, but use our own UI wording. Aero modes are `corner` / `straight` in code.
+- Only CC0/CC-BY assets whose subject is not a real trademarked product. Third-party GLBs of real cars are out.
+- `npm run lint:marks` (banned-term list lives in `scripts/checkMarks.mjs`) must pass; it runs in `npm test` and CI.
+  If you need to mention a real name (e.g. a licence credit), stop and ask.
 
 ## Stack
 - TypeScript everywhere (strict). npm workspaces monorepo.
@@ -70,6 +83,14 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 - Client UI is plain HTML/CSS overlay in `client/src/ui` (no UI framework unless agreed).
 - Assets: `client/public/{hdri,textures,models}/` (git-ignored, fetched by `npm run assets`); only CC0/CC-BY; record source + licence in `client/public/CREDITS.md` and `docs/ASSETS.md`.
 - Tests: Vitest, colocated as `*.test.ts`. Test shared logic (codec round-trips, interpolation sampling, lap logic, ring buffer) and a headless server sim ("car drives forward and stays upright").
+- **Cars are `CarSpec`s** looked up by id (`CAR_SPECS`, phase 8); never import a global `CAR` in new code — take the spec as an argument. Aero modes and ERS live in `shared/src/physics/{aero,ers}.ts` as deterministic per-tick functions called from `stepVehicle`; extra per-car sim state goes into `CarState` (binary codec) so remote cars and the timing tower can show it.
+- **Boost eligibility is server-granted** (gap at detection gates from `RaceTracker`); the force itself is client-side like all physics.
+- **Server persistence** lives only in `server/src/db/` (SQLite, numbered migrations, never edit an applied one). `Room`/`SessionRunner` depend on `Store` interfaces injected at construction (tests use in-memory fakes). Data dir `data/` (`APEX_DATA_DIR`) is git-ignored. Career stats are SQL queries over `race_result`, not stored counters; result inserts are idempotent (`UNIQUE(session_id, profile_id)`).
+- **Identity:** `sessionId` (per tab) = rejoin; `profileId` + secret `profileToken` (localStorage; server stores only a hash) = who you are. Championship seats are keyed by `profileId`.
+- **HTTP API** goes through `server/src/http/router.ts` (body size limits, JSON helpers). WebSocket stays for live race data; uploads (profile photo: ≤ 64 KB, JPEG/PNG/WebP by magic bytes, never SVG, `nosniff`) use HTTP, not WS.
+- **Tracks:** real circuits are generated offline by `scripts/buildTrack.ts` into committed `TrackDef` JSON (`npm run tracks`); runtime code only reads `TrackDef`. Record the data source + licence of every circuit in `CREDITS.md`. Select tracks by id (`TRACKS[id]`), never `APEX_PARK` directly.
+- **Sessions:** a `Session` has `kind` (`free | qualifying | sprint | race`), `trackId`, rules and a points table; the server's `RaceTracker` classifies per kind. Championship state is persisted after every session.
+- **Broadcast UI** (timing tower, sector bar, lights) is DOM/CSS only — no new full-screen GPU passes; update ≤ 5 Hz from server standings. Start-light delay is seeded from `raceId` so all clients agree.
 - Commits: small, one concern each, message prefixed with phase, e.g. `p1: add handbrake drift`.
 
 ## Build phases (details & exit criteria in ARCHITECTURE §6)
@@ -80,9 +101,15 @@ Run `npm run typecheck` and `npm test` before calling any task done. After touch
 5. **Race flow** ✅ — lobby, laps setting, host start, countdown (input locked until GO), live positions, finish grace, results podium, race again
 6. **Visual realism** (mostly ✅) — HDRI IBL, glTF cars + LOD, shadows, post FX, PBR road, scenery, skid marks/smoke/sparks, quality presets. Left: body roll, tree models
 7. **Audio & polish** ✅ — engine/tyre/impact audio, speedometer/gear/minimap HUD, pause menu (audio, graphics, key bindings, camera)
-8. **Optimization & robustness** — binary codec, quantization, reconnect, perf, 2nd track
+8. **Foundations & robustness** — refactors (car specs registry, `Session` extracted from `Room`, `TrackDef` v2, HTTP router, `Store` interfaces, split `tuning.ts`), binary codec + quantization + `PROTOCOL_VERSION`, remove the real-marque car model, trademark lint + CI, 2nd track
+9. **Open-wheel car** — `CAR_SPECS['open-wheel']`, procedural model with animated wings, Active Aero (`corner`/`straight`), ERS battery, Boost (server-granted)
+10. **Real-track pipeline** — offline `scripts/buildTrack.ts` (centerline → `TrackDef` JSON), elevation, variable width, sectors, pit lane, aero/detection zones, 3 circuits
+11. **Player profiles** — SQLite (`node:sqlite`) on the host, profile token identity, photo upload, career stats
+12. **Championship** — qualifying / sprint / race weekends, points, driver + team standings, save/resume keyed by `profileId`
+13. **Broadcast presentation** — start lights, timing tower, sector UI, banners, onboard cam (DOM overlays only)
+14. **Open-source readiness** — LICENSE, README/CONTRIBUTING, disclaimer, licence audit, history scrub, CI release
 
-Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unless asked; do leave seams for it.
+Details and exit criteria for 8–14: `docs/OPEN_WHEEL_PLAN.md`. Work one phase at a time. Don't pull later-phase work (e.g. visuals) forward unless asked; do leave seams for it.
 
 ## Gotchas
 - **Windows firewall** must allow TCP 3000 (or Node) on the active network profile or friends can't connect; see `HOSTING.md` (netsh rule, Public vs Private, block rules beat allow rules). The server prints LAN URLs (Wi-Fi first) and a QR code (`server/src/util/qr.ts`, `uqr`) on boot; `APEX_QR=0` hides it.

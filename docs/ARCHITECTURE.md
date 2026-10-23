@@ -443,7 +443,8 @@ Each phase ends with a **playable/demoable** state and explicit exit criteria.
 | **5** | **Race flow** ✅ — lobby (name/colour/laps), countdown with input lock, grid start, live positions, finish grace, results podium, race again | Full race with friends start → results without reloading |
 | **6** | **Visual realism** (mostly done) — HDRI IBL, glTF cars with paint/clearcoat, shadows, post FX, PBR road, scenery, skid marks/smoke/sparks ✅, quality presets, car LOD. Left: visual body roll, real tree models | Looks "realistic-ish"; ≥60 fps on host laptop at Medium ✅ |
 | **7** | **Audio & polish** ✅ — engine (rpm-pitched, gearbox), tyre screech, scrape, wind, impacts, countdown beeps, speedometer/gear/minimap HUD, pause menu (volumes, quality, key bindings, camera) | Feels like a game |
-| **8** | **Optimization & robustness** — binary codec, snapshot quantization, reconnect, tab-hidden handling, perf profiling, 2nd track | 8 players stable for a full race; bandwidth per client < 50 KB/s |
+| **8** | **Foundations & robustness** — binary codec, snapshot quantization, reconnect, tab-hidden handling, perf profiling, 2nd track, plus the refactors in `OPEN_WHEEL_PLAN.md` §1 | 8 players stable for a full race; bandwidth per client < 50 KB/s |
+| **9–14** | **Open-wheel upgrade** — car + Active Aero/ERS, real-track pipeline, profiles (SQLite), championship, broadcast presentation, open-source readiness | See [`OPEN_WHEEL_PLAN.md`](OPEN_WHEEL_PLAN.md) |
 
 ---
 
