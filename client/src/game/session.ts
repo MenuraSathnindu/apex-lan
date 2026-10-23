@@ -1,4 +1,4 @@
-import { APEX_PARK, CAR_COLORS, freeSession, NAME_MAX_LENGTH, RACE, isCompound, presetLivery, sanitizeLivery, type Compound, type Livery, type ProfileSummary, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
+import { APEX_PARK, CAR_COLORS, freeSession, NAME_MAX_LENGTH, RACE, isCompound, presetLivery, sanitizeLivery, type Compound, type ChampionshipView, type Livery, type ProfileSummary, type SeasonListItem, type C2S, type DetectionEvent, type LapEvent, type PlayerInfo, type RaceState, type S2C, type Standing } from '@apex/shared';
 
 const PROFILE_KEY = 'apex.profile';
 const SESSION_KEY = 'apex.session';
@@ -49,6 +49,11 @@ export class Session {
   readonly detections: DetectionEvent[] = [];
   /** The profile this connection is logged in as (confirmed by the server), or null for a guest. */
   account: ProfileSummary | null = null;
+  /** The championship season loaded in the room (null = none), and the seasons list. */
+  champ: ChampionshipView | null = null;
+  champList: SeasonListItem[] = [];
+  /** Refusals from the server waiting to be shown. */
+  readonly notices: string[] = [];
   /** Why the last login on the socket failed (shown in the lobby), or null. */
   authError: string | null = null;
   /** Login token to present in `hello` (set by the account client). */
@@ -128,6 +133,15 @@ export class Session {
       case 'auth':
         this.account = msg.ok ? msg.profile : null;
         this.authError = msg.ok ? null : (msg.reason ?? 'login failed');
+        return true;
+      case 'champ':
+        this.champ = msg.view;
+        return true;
+      case 'champList':
+        this.champList = msg.seasons;
+        return true;
+      case 'notice':
+        this.notices.push(msg.text);
         return true;
       case 'detect':
         this.detections.push(msg.e);

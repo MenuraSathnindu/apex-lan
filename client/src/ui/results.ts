@@ -7,15 +7,16 @@ const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 /** Results screen: podium for the top 3, full table, and the host's "Race again". */
-export function createResults(root: HTMLElement, session: Session, onRaceAgain: () => void) {
+export function createResults(root: HTMLElement, session: Session, onRaceAgain: () => void, onStandings: () => void = () => {}) {
   root.innerHTML = `
     <div class="res-panel">
-      <h1>Results</h1>
+      <h1 class="res-title">Results</h1>
       <div class="res-podium"></div>
       <table class="res-table">
         <thead><tr><th>#</th><th>Driver</th><th>Time</th><th>Best lap</th></tr></thead>
         <tbody></tbody>
       </table>
+      <button type="button" class="res-standings" hidden>Championship standings</button>
       <button type="button" class="res-again">Race again</button>
       <p class="res-wait"></p>
     </div>`;
@@ -24,6 +25,9 @@ export function createResults(root: HTMLElement, session: Session, onRaceAgain: 
   const again = root.querySelector<HTMLButtonElement>('.res-again')!;
   const wait = root.querySelector<HTMLElement>('.res-wait')!;
   again.addEventListener('click', () => onRaceAgain());
+  const standingsBtn = root.querySelector<HTMLButtonElement>('.res-standings')!;
+  standingsBtn.addEventListener('click', () => onStandings());
+  const titleEl = root.querySelector<HTMLElement>('.res-title')!;
   let key = '';
 
   return {
@@ -32,6 +36,12 @@ export function createResults(root: HTMLElement, session: Session, onRaceAgain: 
       root.hidden = !show;
       if (!show) return;
       again.hidden = !session.isHost;
+      // Championship sessions: say which, offer the standings; the host continues from the hub.
+      const info = session.race.session;
+      const kind = info.kind === 'qualifying' ? 'Qualifying' : info.kind === 'sprint' ? 'Sprint' : info.kind === 'race' ? 'Race' : 'Results';
+      titleEl.textContent = info.round ? `Round ${info.round.round} · ${kind}` : kind === 'Results' ? 'Results' : kind;
+      standingsBtn.hidden = !info.round;
+      again.textContent = info.round ? 'Back to lobby' : 'Race again';
       const host = session.players.find((p) => p.id === session.hostId);
       wait.textContent = session.isHost ? '' : `Waiting for ${host?.name ?? 'the host'} to start the next race…`;
 

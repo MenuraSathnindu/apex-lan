@@ -70,6 +70,7 @@ import { createFpsCounter } from './ui/fpsCounter.ts';
 import { createMenu } from './ui/menu.ts';
 import { createTrackSelect } from './ui/trackSelect.ts';
 import { createProfileScreen } from './ui/profileScreen.ts';
+import { createChampionshipHub } from './ui/championship/hub.ts';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const loading = createLoadingScreen($('#loading'));
@@ -191,6 +192,23 @@ void fetch('/tracks/index.json')
   .catch(() => console.warn('[tracks] no generated tracks (client/public/tracks/index.json) — only the built-in one.'));
 const trackSelect = createTrackSelect($('#track-select'), (trackId) => socket.send({ t: 'setTrack', trackId }));
 const trackLoading = $('#track-loading');
+const hub = createChampionshipHub($('#championship'), {
+  session,
+  send: (msg) => socket.send(msg),
+  tracks: () => trackList,
+  showFinale: () => hub.show('drivers'), // the champion screen arrives with the finale task
+});
+// Short messages from the server (refused actions).
+const noticeEl = $('#notice');
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+const showNotices = () => {
+  const text = session.notices.splice(0).at(-1);
+  if (!text) return;
+  noticeEl.textContent = text;
+  noticeEl.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (noticeEl.hidden = true), 4000);
+};
 const profiles = createProfileScreen($('#profiles'), {
   account,
   me: () => session.account,
@@ -266,6 +284,9 @@ const lobby = createLobby($('#lobby'), session, {
   onShowProfile(id) {
     profiles.showProfile(id);
   },
+  onChampionship() {
+    hub.show();
+  },
 }, () => trackList);
 const raceOverlay = createRaceOverlay(
   $('#race'),
@@ -284,7 +305,12 @@ const spectating = () => session.joined && session.me?.entrant === false && sess
 const spectator = new Spectator();
 const raceController = new RaceController(track, buildCheckpoints(track), car, session, gridPose);
 const raceHud = createRaceHud($('#racehud'), session, clock, raceController);
-const results = createResults($('#results'), session, () => socket.send({ t: 'endRace' }));
+const results = createResults(
+  $('#results'),
+  session,
+  () => socket.send({ t: 'endRace' }),
+  () => hub.show('drivers'),
+);
 
 /** Race we're currently driving in (0 = none yet). Lets a quick reconnect keep our car where it is. */
 let localRaceId = 0;
@@ -324,6 +350,8 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
     if (!msg.ok && account.token && msg.reason?.startsWith('unknown')) account.forget();
     profiles.refresh();
   }
+  if (msg.t === 'notice') showNotices();
+  if (msg.t === 'champ' || msg.t === 'champList' || msg.t === 'roster') hub.refresh();
   if (msg.t === 'roster' && session.account && session.me?.profileId === session.account.id) {
     // Tag / photo / livery edits come back through the roster: keep our account in step.
     const me = session.me;

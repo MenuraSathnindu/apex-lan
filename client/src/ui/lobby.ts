@@ -31,6 +31,7 @@ export interface LobbyHandlers {
   onAccount(): void;
   onHallOfFame(): void;
   onShowProfile(profileId: number): void;
+  onChampionship(): void;
 }
 
 /** Pre-race screen: name, colour, who's here, and the host's Start button. */
@@ -49,6 +50,7 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
         <button type="button" class="lobby-account-btn"></button>
         <button type="button" class="lobby-hof-btn">🏆 Hall of Fame</button>
       </div>
+      <button type="button" class="lobby-champ-btn">🏁 Championship</button>
       <p class="lobby-auth-error" role="alert" hidden></p>
       <label class="lobby-label" for="lobby-name">Your name</label>
       <input id="lobby-name" class="lobby-name" maxlength="${NAME_MAX_LENGTH}" autocomplete="off" spellcheck="false" placeholder="Driver name" />
@@ -149,6 +151,8 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
   const authError = root.querySelector<HTMLElement>('.lobby-auth-error')!;
   accountBtn.addEventListener('click', () => handlers.onAccount());
   root.querySelector('.lobby-hof-btn')!.addEventListener('click', () => handlers.onHallOfFame());
+  const champBtn = root.querySelector<HTMLButtonElement>('.lobby-champ-btn')!;
+  champBtn.addEventListener('click', () => handlers.onChampionship());
   list.addEventListener('click', (e) => {
     const row = (e.target as HTMLElement).closest<HTMLElement>('[data-profile]');
     if (row) handlers.onShowProfile(Number(row.dataset.profile));
@@ -235,17 +239,23 @@ export function createLobby(root: HTMLElement, session: Session, handlers: Lobby
       trackMeta.textContent = entry ? `${entry.lengthKm.toFixed(2)} km${entry.street ? ' · street circuit' : ''}` : '';
       if (entry) requestAnimationFrame(() => drawTrackPreview(trackMap, entry, { width: 2 }));
     }
-    trackChange.hidden = !session.isHost;
+    // A loaded season decides track, laps and tyres; the quick-race controls step aside.
+    const season = session.champ;
+    champBtn.textContent = season
+      ? `🏁 ${season.name} — ${season.status === 'finished' ? 'finished' : season.next ? `R${season.next.round}/${season.rounds.length} next: ${season.next.session}` : 'not started'}`
+      : '🏁 Championship';
+    champBtn.classList.toggle('active', !!season);
+    trackChange.hidden = !session.isHost || !!season;
 
     lapsValue.textContent = String(session.race.laps);
     for (const b of lapButtons) {
       const d = Number(b.dataset.d);
-      b.hidden = !session.isHost;
+      b.hidden = !session.isHost || !!season;
       b.disabled = d < 0 ? session.race.laps <= RACE.minLaps : session.race.laps >= RACE.maxLaps;
     }
     lapsHint.textContent = session.isHost ? '' : 'set by the host';
 
-    start.hidden = !session.isHost;
+    start.hidden = !session.isHost || !!season;
     const host = session.players.find((p) => p.id === session.hostId);
     wait.textContent = session.isHost ? 'You are the host — start when everyone is in.' : `Waiting for ${host?.name ?? 'the host'} to start…`;
   };
