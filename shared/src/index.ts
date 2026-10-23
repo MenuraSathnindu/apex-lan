@@ -19,6 +19,7 @@ export * from './race/checkpoints.ts';
 export * from './race/raceTracker.ts';
 export * from './physics/drivetrain.ts';
 export * from './physics/vehicleFx.ts';
+export * from './livery.ts';
 export * from './physics/aero.ts';
 export * from './physics/ers.ts';
 export * from './track/zones.ts';

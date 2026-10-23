@@ -318,6 +318,39 @@ export const CAR_MODEL = {
   headlightIntensity: 2.0,
 };
 
+/**
+ * Livery canvas layout. The body's UVs are a top-down projection of the car: u runs along the
+ * car (0 = tail, 1 = nose), v across it (1 = left, 0 = right). Rects are in that UV space, so
+ * they work for any model — the GLB loader generates the projection itself when needed.
+ * Colours: primary = base, secondary = stripes/roundels, accent = pinstripes and the number.
+ */
+export const LIVERY = {
+  texture: { width: 1024, height: 512 },
+  numberMax: 99,
+  /** Stripes painted in the secondary colour. u0..u1 along the car, v0..v1 across. */
+  stripes: [
+    { u0: 0.3, u1: 1.0, v0: 0.44, v1: 0.56 },
+    { u0: 0.56, u1: 0.66, v0: 0.0, v1: 1.0 },
+  ],
+  /** Thin lines in the accent colour. */
+  pinstripes: [
+    { u0: 0.3, u1: 1.0, v0: 0.39, v1: 0.42 },
+    { u0: 0.3, u1: 1.0, v0: 0.58, v1: 0.61 },
+    { u0: 0.68, u1: 0.7, v0: 0.0, v1: 1.0 },
+  ],
+  /** Number roundels: centre (u, v) and diameter as a fraction of the texture height. */
+  numbers: [
+    { u: 0.34, v: 0.5, size: 0.3 },
+    { u: 0.9, v: 0.5, size: 0.14 },
+    { u: 0.47, v: 0.14, size: 0.16 },
+    { u: 0.47, v: 0.86, size: 0.16 },
+  ],
+  /** Material finish of the painted body. */
+  finish: { metalness: 0.15, roughness: 0.32, clearcoat: 1.0, clearcoatRoughness: 0.04 },
+  /** Carbon-fibre trim (wings, floor, halo). */
+  carbon: 0x14151a,
+};
+
 export type QualityLevel = 'low' | 'medium' | 'high';
 
 /** Graphics presets. Auto mode starts at high and steps down if FPS is too low. */
