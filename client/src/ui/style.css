@@ -2493,3 +2493,45 @@ body {
     transform: skewY(-6deg) scaleX(0.94);
   }
 }
+
+/* --- Replays --- */
+.replay {
+  position: fixed;
+  top: 14px;
+  right: 50%;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px 6px 6px;
+  border-radius: 8px;
+  background: rgba(8, 10, 14, 0.85);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  transform: translateX(50%);
+}
+
+.replay[hidden] {
+  display: none;
+}
+
+.rp-live {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #d7263d;
+  letter-spacing: 0.12em;
+}
+
+.rp-skip {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: #2b313c;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rp-skip small {
+  opacity: 0.6;
+}

@@ -50,6 +50,8 @@ import { RemoteCars } from './game/remoteCars.ts';
 import { AccountClient } from './game/accountClient.ts';
 import { Spectator } from './game/spectator.ts';
 import { PitStop } from './game/pitStop.ts';
+import { Broadcast } from './game/broadcast.ts';
+import { createReplayBadge } from './ui/replayBadge.ts';
 import { Session } from './game/session.ts';
 import { SettingsStore } from './game/userSettings.ts';
 import { createInputController } from './input/inputController.ts';
@@ -315,6 +317,10 @@ const spectator = new Spectator();
 const raceController = new RaceController(track, buildCheckpoints(track), car, session, gridPose);
 /** Pit lane state of our car (zone this tick, and the stop under way). */
 const pit = { zone: 'none' as PitZone, stop: new PitStop(), hint: -1 };
+// TV direction: replays (and, after the race, the podium).
+const broadcast = new Broadcast(session, clock, remoteCars, carView, createReplayBadge($('#replay'), () => broadcast.stop()), spectating);
+quality.onChange((level) => (broadcast.recording = level !== 'low'));
+broadcast.recording = quality.level !== 'low';
 /** Whose timing the HUD shows: our car, or the one we're watching (set every frame). */
 let focusId = 0;
 const raceHud = createRaceHud($('#racehud'), session, clock, raceController, pit, {
@@ -361,6 +367,7 @@ const applyRoom = (msg: S2C, prevRaceId: number) => {
       pending = { kind: 'grid' };
       session.lastDetection = null;
       effects.clear();
+      broadcast.reset();
     }
     if (msg.race.phase === 'lobby') pending = { kind: 'grid' };
     localRaceId = msg.race.raceId;
@@ -410,6 +417,7 @@ const renderQuat = new THREE.Quaternion();
 const wheels: WheelState[] = [];
 const fwdTmp = new THREE.Vector3();
 const hudMe = { x: 0, z: 0, yaw: 0, color: 0 };
+const ownCarPose = { pos: renderPos, quat: renderQuat };
 const hudPower = { charge: 0, budget: 0, deploying: false, harvesting: false, aeroBlend: 0, inZone: false, overtake: false, gap: null as number | null, compound: 'medium' as Compound, wear: 0, wearOn: true };
 const HOLD: CarInput = { ...NEUTRAL_INPUT, handbrake: true };
 let lastInput: CarInput = HOLD;
@@ -531,7 +539,9 @@ startLoop({
     }
     const followed = watching ? [...remoteCars.visible()].find((c) => c.id === spectator.target(visibleIds, session.standings[0]?.id ?? null)) : undefined;
     focusId = followed?.id ?? session.myId;
-    if (followed) cameraRig.update(frameDt, followed.pos, followed.quat, followed.speed);
+    if (broadcast.frame(frameDt, watching ? null : ownCarPose, gfx.camera)) {
+      // A replay owns the camera and the car models this frame.
+    } else if (followed) cameraRig.update(frameDt, followed.pos, followed.quat, followed.speed);
     else cameraRig.update(frameDt, renderPos, renderQuat, speed);
     remoteCars.render(gfx.camera, frameDt);
     for (const rc of remoteCars.visible()) effects.remoteFrame(rc, frameDt);
@@ -546,6 +556,7 @@ startLoop({
     for (const hit of localFx.impacts.splice(0)) {
       audio.impact((hit.dv - FX.impactMinDv) / (FX.impactFullDv - FX.impactMinDv) + 0.15);
       effects.impact(hit, car);
+      broadcast.onImpact(hit.dv);
     }
     gfx.environment.follow(renderPos);
     fwdTmp.set(0, 0, 1).applyQuaternion(renderQuat);

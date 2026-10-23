@@ -653,6 +653,12 @@ export const DRIVETRAIN = {
 // ---------------------------------------------------------------------------
 
 export const FX = {
+  /**
+   * Replays: the last windowMs of every car's pose at hz; an event (crash above impactDv m/s, or an
+   * overtake in the top 3) clips beforeMs..afterMs around it. Up to maxClips are kept; requests
+   * within mergeMs of a pending/kept clip are dropped. Trackside camera offset (m).
+   */
+  replay: { windowMs: 12_000, hz: 30, beforeMs: 7000, afterMs: 3000, maxClips: 4, mergeMs: 5000, impactDv: 6, cameraSide: 12, cameraUp: 4 },
   /** Fake wheelspin at launch (m/s of slip at full throttle from standstill), fades out by launchSlipSpeed. */
   launchSlip: 6,
   launchSlipSpeed: 7,

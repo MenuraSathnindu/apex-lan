@@ -118,6 +118,8 @@ class RemoteCar {
 export class RemoteCars {
   private readonly cars = new Map<number, RemoteCar>();
   private glassTransmission = false;
+  /** While a replay plays: where each car is (false = hide it). Name tags and sounds are off. */
+  private override: ((id: number, out: { pos: THREE.Vector3; quat: THREE.Quaternion }) => boolean) | null = null;
 
   constructor(
     private readonly world: World,
@@ -211,6 +213,14 @@ export class RemoteCars {
     // render(), so do it now or tags are projected with last frame's view (visible lag at speed).
     camera.updateMatrixWorld();
     for (const car of this.cars.values()) {
+      if (this.override) {
+        const shown = this.override(car.id, car);
+        car.view.root.visible = shown;
+        if (shown) car.view.update(car.pos, car.quat, car.wheels);
+        car.voice?.silence();
+        this.tags.place(car.id, car.pos, camera, false);
+        continue;
+      }
       const ok = car.sample(now - INTERP_DELAY_MS, now);
       car.view.root.visible = ok;
       if (ok) {
@@ -228,6 +238,11 @@ export class RemoteCars {
       tagPos.copy(car.pos).y += TAG_HEIGHT;
       this.tags.place(car.id, tagPos, camera, ok);
     }
+  }
+
+  /** Replay mode: cars are placed by `fn` instead of the live interpolation (null = live again). */
+  setOverride(fn: ((id: number, out: { pos: THREE.Vector3; quat: THREE.Quaternion }) => boolean) | null): void {
+    this.override = fn;
   }
 
   /** Newest relayed state of a car, or null. */
