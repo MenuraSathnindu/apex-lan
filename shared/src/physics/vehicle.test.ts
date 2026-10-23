@@ -105,6 +105,10 @@ describe('handling stays in sane ranges', () => {
     expect(r.topSpeedStraightKmh).toBeGreaterThan(r.topSpeedKmh + 15);
     expect(r.fastCornerLateralG).toBeGreaterThan(r.cornerLateralG * 1.6);
   });
+  it('reaches about 330 km/h with the wings open and boost', () => {
+    expect(r.topSpeedBoostKmh).toBeGreaterThan(315);
+    expect(r.topSpeedBoostKmh).toBeLessThan(345);
+  });
   it('brakes 100-0 in under 25 m', () => expect(r.brake100to0m).toBeLessThan(25));
   it('is grippy without the handbrake', () => {
     expect(r.cornerLateralG).toBeGreaterThan(1.5);

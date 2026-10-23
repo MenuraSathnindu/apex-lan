@@ -18,6 +18,7 @@ import {
   initRapier,
   packCarState,
   readWheelStates,
+  refillErs,
   resetVehicle,
   stepVehicle,
   vehicleSpeed,
@@ -188,6 +189,7 @@ let pending: { kind: 'grid' } | { kind: 'resume'; s: CarState } | null = null;
 
 const placeOnGrid = () => {
   resetVehicle(car, gridPose());
+  refillErs(car.ers, car.spec);
   raceController.reset();
 };
 

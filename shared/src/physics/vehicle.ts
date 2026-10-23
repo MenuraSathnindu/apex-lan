@@ -2,6 +2,7 @@ import type { CarInput } from '../input.ts';
 import { CAR, type CarSpec, type SurfaceKind, type Vec3Like } from '../tuning.ts';
 import { CAR_GROUPS, WHEEL_RAY_GROUPS } from './collisionGroups.ts';
 import { aeroCoefficients, createAero, stepAero, type AeroCoefficients, type AeroState } from './aero.ts';
+import { createErs, stepErs, type ErsState } from './ers.ts';
 import { surfaceOf } from './surfaces.ts';
 import { RAPIER, type DynamicRayCastVehicleController, type RigidBody, type World } from './rapier.ts';
 
@@ -28,6 +29,8 @@ export interface Vehicle {
   upsideDownTime: number;
   /** Active-aero wing state (corner / straight mode). */
   readonly aero: AeroState;
+  /** Battery / boost state. */
+  readonly ers: ErsState;
   /** Set by the game each tick: the car is inside a straight-mode zone of the track. */
   inAeroZone: boolean;
   /** What each wheel touched last tick (FL, FR, RL, RR). */
@@ -114,6 +117,7 @@ export function createVehicle(world: World, pose: SpawnPose, spec: CarSpec = CAR
     rearGrip: 1,
     upsideDownTime: 0,
     aero: createAero(),
+    ers: createErs(spec),
     inAeroZone: false,
     surfaces: ['asphalt', 'asphalt', 'asphalt', 'asphalt'],
   };
@@ -158,9 +162,14 @@ export function stepVehicle(v: Vehicle, input: CarInput, dt: number): void {
   let driveForce = 0;
   let brake = 0;
 
+  const ersPower = stepErs(v.ers, spec, { throttle, brake: brakePedal, boost: input.boost, speed }, dt);
   if (throttle > 0) {
     if (speed < -eng.reverseEngageSpeed) brake = throttle; // rolling backwards: throttle brakes first
-    else driveForce = throttle * Math.min(eng.maxForce, eng.power / Math.max(absSpeed, 1));
+    else {
+      // The ERS motor adds power at speed and a little force at launch.
+      const lowSpeedBonus = (ersPower / spec.ers.deployPower) * spec.ers.deployLowSpeedForce;
+      driveForce = throttle * Math.min(eng.maxForce + lowSpeedBonus, (eng.power + ersPower) / Math.max(absSpeed, 1));
+    }
   }
   if (brakePedal > 0) {
     if (speed > eng.reverseEngageSpeed) brake = Math.max(brake, brakePedal);

@@ -129,8 +129,8 @@ export const CAR = {
   /**
    * Aerodynamics. Both force terms scale with speed²; the wing mode picks the coefficients.
    * Downforce adds to the wheel load, so grip rises with speed² too (fast corners grip most).
-   * Top speed ≈ (power / drag)^(1/3): ~255 km/h in corner mode, ~295 km/h in straight mode on
-   * the combustion engine alone, ~335 km/h with ERS deployed.
+   * Top speed ≈ (power / drag)^(1/3): ~250 km/h in corner mode, ~300 km/h in straight mode on
+   * the combustion engine alone, ~330 km/h with ERS deployed.
    */
   aero: {
     /** Rolling resistance force = rolling · v. */
@@ -139,7 +139,7 @@ export const CAR = {
       /** "Z-mode": wings closed — high downforce, high drag. */
       corner: { drag: 1.45, downforce: 4.3 },
       /** "X-mode": wings open — low drag, ~40 % of the downforce. */
-      straight: { drag: 0.95, downforce: 1.7 },
+      straight: { drag: 0.85, downforce: 1.7 },
     },
     /** Seconds for the wings to open (straight) and to snap shut (corner). */
     openTime: 0.35,
@@ -149,6 +149,41 @@ export const CAR = {
     /** Brake pedal above this, or steering beyond it (|steer|), snaps the wings shut. */
     brakeClose: 0.05,
     steerClose: 0.3,
+  },
+
+  /**
+   * Energy recovery system: a battery that harvests under braking and lift-off and deploys as
+   * extra engine power while the boost key is held. Energy in joules, power in watts.
+   */
+  ers: {
+    capacity: 4_000_000,
+    /** Battery level at the start of a race (fraction of capacity). */
+    startCharge: 0.6,
+    /** Extra engine power while deploying at full throttle. */
+    deployPower: 300_000,
+    /** Extra low-speed drive force at full deployment (N): the ERS motor also helps launch. */
+    deployLowSpeedForce: 2500,
+    /** Deployment fades out between these speeds (m/s) — the motor runs out of range. */
+    taperFromSpeed: 88,
+    taperToSpeed: 100,
+    /** Harvest power at full brake pedal (scaled down below brakeFullSpeed), and when lifting off. */
+    harvestBrakePower: 300_000,
+    brakeFullSpeed: 35,
+    harvestLiftPower: 60_000,
+    /** No harvesting below this speed (m/s). */
+    harvestMinSpeed: 12,
+    /** Fraction of the harvested energy that reaches the battery. */
+    harvestEfficiency: 0.9,
+    /** Energy that may be deployed per lap (J). Less than the capacity: you have to manage it. */
+    lapDeployLimit: 2_800_000,
+    /** Overtake mode (granted by the server at the detection point, lasts one lap). */
+    overtake: {
+      /** Extra deploy power on top of deployPower, and extra energy allowed that lap. */
+      extraPower: 150_000,
+      extraLapEnergy: 1_200_000,
+      /** Gap to the car ahead (s) at the detection point that unlocks it. */
+      maxGap: 1.0,
+    },
   },
 
   /**

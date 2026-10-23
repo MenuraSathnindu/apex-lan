@@ -13,6 +13,8 @@ export interface CarInput {
   aero: boolean;
   /** Setting: open the wings automatically whenever allowed. */
   aeroAuto: boolean;
+  /** Held: deploy stored electrical energy as extra power (boost). */
+  boost: boolean;
 }
 
 export const NEUTRAL_INPUT: Readonly<CarInput> = {
@@ -23,4 +25,5 @@ export const NEUTRAL_INPUT: Readonly<CarInput> = {
   reset: false,
   aero: false,
   aeroAuto: false,
+  boost: false,
 };

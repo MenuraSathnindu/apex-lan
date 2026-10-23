@@ -20,7 +20,7 @@ const VOLUMES: { key: 'master' | 'engine' | 'effects' | 'ui'; label: string }[] 
 const TABS = ['audio', 'graphics', 'controls', 'camera'] as const;
 type Tab = (typeof TABS)[number];
 
-const GAMEPAD_HELP = 'RT / R2 throttle · LT / L2 brake · left stick steer · A / ✕ handbrake · X / □ wings · B / ○ reset · Y / △ camera · Start menu';
+const GAMEPAD_HELP = 'RT / R2 throttle · LT / L2 brake · left stick steer · A / ✕ handbrake · X / □ wings · RB / R1 boost · B / ○ reset · Y / △ camera · Start menu';
 
 /**
  * Pause menu (Esc, the ☰ button, or gamepad Start): audio volumes, graphics quality,

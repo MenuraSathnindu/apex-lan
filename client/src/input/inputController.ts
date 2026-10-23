@@ -53,6 +53,7 @@ export function createInputController() {
       input.reset = pressed(KEYS.reset) || !!gp?.resetPressed;
       input.aero = pressed(KEYS.aero) || !!gp?.aeroPressed;
       input.aeroAuto = aeroAuto;
+      input.boost = any(KEYS.boost) || !!gp?.boost;
       if (pressed(KEYS.camera) || gp?.cameraPressed) cameraRequested = true;
       return input;
     },

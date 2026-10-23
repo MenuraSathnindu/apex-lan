@@ -58,6 +58,8 @@ export interface HandlingReport {
   topSpeedKmh: number;
   /** Top speed on the combustion engine with the wings open (straight mode). */
   topSpeedStraightKmh: number;
+  /** Top speed with the wings open and unlimited boost energy (the long-straight figure). */
+  topSpeedBoostKmh: number;
   /** Lateral g in a full-lock turn at 250 km/h (corner mode, downforce at work). */
   fastCornerLateralG: number;
   brake100to0m: number;
@@ -118,6 +120,13 @@ export function measureHandling(spec: CarSpec = CAR, log?: (phase: string) => vo
   step(open, {}, SECONDS(1));
   step(open, { throttle: 1, aeroAuto: true }, SECONDS(60));
   const topSpeedStraightKmh = vehicleSpeed(open.car) * 3.6;
+
+  log?.('top speed, wings open + boost');
+  const boosted = rig({ ...spec, ers: { ...spec.ers, capacity: 1e12, lapDeployLimit: 1e12, startCharge: 1 } });
+  boosted.car.inAeroZone = true;
+  step(boosted, {}, SECONDS(1));
+  step(boosted, { throttle: 1, aeroAuto: true, boost: true }, SECONDS(60));
+  const topSpeedBoostKmh = vehicleSpeed(boosted.car) * 3.6;
 
   log?.('braking');
   // Braking 100-0
@@ -184,6 +193,7 @@ export function measureHandling(spec: CarSpec = CAR, log?: (phase: string) => vo
     zeroTo100s,
     topSpeedKmh,
     topSpeedStraightKmh,
+    topSpeedBoostKmh,
     fastCornerLateralG: fastG,
     brake100to0m,
     cornerLateralG: latG,

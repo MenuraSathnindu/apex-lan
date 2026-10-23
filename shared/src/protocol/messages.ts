@@ -41,6 +41,9 @@ export interface CarState {
   b: 0 | 1;
   /** Wing opening 0 (corner mode) .. 1 (straight mode), for the wing animation. Absent = 0. */
   a?: number;
+  /** Battery level 0..1 and 1 while deploying (timing tower, boost effects). Absent = 0. */
+  e?: number;
+  d?: 0 | 1;
 }
 
 /** A relayed car state: who it belongs to and when the server received it. */
