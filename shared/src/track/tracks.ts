@@ -28,6 +28,13 @@ export const APEX_PARK: TrackDef = {
   barrierHeight: 1.0,
   barrierThickness: 0.8,
   curbMaxRadius: 110,
+  // Start/finish straight (wraps over the line) and the gentle straight through the back esses.
+  aeroZones: [
+    { from: 1075, to: 135 },
+    { from: 815, to: 900 },
+  ],
+  // Just before the last corner, so the overtake boost is armed for the next lap's straights.
+  detectionPoint: 1000,
 };
 
 export const TRACKS = { [APEX_PARK.id]: APEX_PARK } as const;

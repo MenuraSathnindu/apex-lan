@@ -101,6 +101,10 @@ describe('handling stays in sane ranges', () => {
     expect(r.topSpeedKmh).toBeGreaterThan(230);
     expect(r.topSpeedKmh).toBeLessThan(360);
   });
+  it('is faster with the wings open and corners harder at speed (downforce ∝ v²)', () => {
+    expect(r.topSpeedStraightKmh).toBeGreaterThan(r.topSpeedKmh + 15);
+    expect(r.fastCornerLateralG).toBeGreaterThan(r.cornerLateralG * 1.6);
+  });
   it('brakes 100-0 in under 25 m', () => expect(r.brake100to0m).toBeLessThan(25));
   it('is grippy without the handbrake', () => {
     expect(r.cornerLateralG).toBeGreaterThan(1.5);

@@ -1,6 +1,7 @@
 import type { CarInput } from '../input.ts';
 import { CAR, type CarSpec, type SurfaceKind, type Vec3Like } from '../tuning.ts';
 import { CAR_GROUPS, WHEEL_RAY_GROUPS } from './collisionGroups.ts';
+import { aeroCoefficients, createAero, stepAero, type AeroCoefficients, type AeroState } from './aero.ts';
 import { surfaceOf } from './surfaces.ts';
 import { RAPIER, type DynamicRayCastVehicleController, type RigidBody, type World } from './rapier.ts';
 
@@ -25,6 +26,10 @@ export interface Vehicle {
   /** 0 = handbrake grip, 1 = full grip; eases back after releasing the handbrake. */
   rearGrip: number;
   upsideDownTime: number;
+  /** Active-aero wing state (corner / straight mode). */
+  readonly aero: AeroState;
+  /** Set by the game each tick: the car is inside a straight-mode zone of the track. */
+  inAeroZone: boolean;
   /** What each wheel touched last tick (FL, FR, RL, RR). */
   readonly surfaces: SurfaceKind[];
 }
@@ -108,6 +113,8 @@ export function createVehicle(world: World, pose: SpawnPose, spec: CarSpec = CAR
     steerAngle: 0,
     rearGrip: 1,
     upsideDownTime: 0,
+    aero: createAero(),
+    inAeroZone: false,
     surfaces: ['asphalt', 'asphalt', 'asphalt', 'asphalt'],
   };
 }
@@ -117,6 +124,8 @@ function yawInertia(spec: CarSpec): number {
   const [sx, sz] = [c.halfExtents.x * 2, c.halfExtents.z * 2];
   return (c.mass / 12) * (sx * sx + sz * sz) * c.inertiaScale.y;
 }
+
+const aeroScratch: AeroCoefficients = { drag: 0, downforce: 0 };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -187,15 +196,24 @@ export function stepVehicle(v: Vehicle, input: CarInput, dt: number): void {
     if (controller.wheelIsInContact(i)) surfaceDrag += surface.drag;
   }
 
+  // --- Active aero: wings open on the straights, snap shut under braking / steering.
+  stepAero(
+    v.aero,
+    spec,
+    { inZone: v.inAeroZone, press: input.aero, auto: input.aeroAuto, brake: brakePedal, steer: input.steer, speed: absSpeed },
+    dt,
+  );
+  const coeff = aeroCoefficients(v.aero, spec, aeroScratch);
+
   // --- Aerodynamics + rolling/surface resistance as one-shot impulses
   // (addForce would persist across steps).
   const vel = body.linvel();
   const vMag = Math.hypot(vel.x, vel.y, vel.z);
   if (vMag > 0.01) {
     const a = spec.aero;
-    const resist = (a.drag * vMag * vMag + (a.rolling + surfaceDrag) * vMag) * dt;
+    const resist = (coeff.drag * vMag * vMag + (a.rolling + surfaceDrag) * vMag) * dt;
     const up = rotate(body.rotation(), { x: 0, y: 1, z: 0 });
-    const down = a.downforce * absSpeed * absSpeed * dt;
+    const down = coeff.downforce * absSpeed * absSpeed * dt;
     body.applyImpulse(
       {
         x: (-vel.x / vMag) * resist - up.x * down,
@@ -217,7 +235,9 @@ export function stepVehicle(v: Vehicle, input: CarInput, dt: number): void {
     const ang = body.angvel();
     const yawRate = ang.x * up.x + ang.y * up.y + ang.z * up.z;
     // What the steering asks for, capped by what the tyres can deliver (a = v·ω ≤ μ·g).
-    const gripLimit = (w.frictionSlip.front * 9.81) / absSpeed;
+    // Downforce adds to the wheel load, so the grip limit grows with speed².
+    const loadG = 9.81 + (coeff.downforce * absSpeed * absSpeed) / spec.chassis.mass;
+    const gripLimit = (w.frictionSlip.front * loadG) / absSpeed;
     const targetYawRate = clamp((speed * Math.tan(v.steerAngle)) / wheelbase, -gripLimit, gripLimit);
     // Only remove excess rotation (oversteer); never add yaw the tyres aren't producing.
     const excess =
@@ -254,6 +274,8 @@ export function resetVehicle(v: Vehicle, pose?: SpawnPose): void {
   v.steerAngle = 0;
   v.rearGrip = 1;
   v.upsideDownTime = 0;
+  v.aero.blend = 0;
+  v.aero.open = false;
 }
 
 /** Fills `out` with the visual state of each wheel (chassis space). */

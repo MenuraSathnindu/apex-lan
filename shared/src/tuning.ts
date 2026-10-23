@@ -126,13 +126,29 @@ export const CAR = {
     minSpeed: 4,
   },
 
+  /**
+   * Aerodynamics. Both force terms scale with speed²; the wing mode picks the coefficients.
+   * Downforce adds to the wheel load, so grip rises with speed² too (fast corners grip most).
+   * Top speed ≈ (power / drag)^(1/3): ~255 km/h in corner mode, ~295 km/h in straight mode on
+   * the combustion engine alone, ~335 km/h with ERS deployed.
+   */
   aero: {
-    /** Drag force = drag · v². Top speed with 520 kW ≈ (power/drag)^(1/3). */
-    drag: 1.1,
     /** Rolling resistance force = rolling · v. */
     rolling: 8,
-    /** Downforce = downforce · v² (applied at centre of mass): ≈ 2.6× the car's weight at 250 km/h. */
-    downforce: 4.3,
+    modes: {
+      /** "Z-mode": wings closed — high downforce, high drag. */
+      corner: { drag: 1.45, downforce: 4.3 },
+      /** "X-mode": wings open — low drag, ~40 % of the downforce. */
+      straight: { drag: 0.95, downforce: 1.7 },
+    },
+    /** Seconds for the wings to open (straight) and to snap shut (corner). */
+    openTime: 0.35,
+    closeTime: 0.12,
+    /** Wings only open above this speed (m/s). */
+    minOpenSpeed: 25,
+    /** Brake pedal above this, or steering beyond it (|steer|), snaps the wings shut. */
+    brakeClose: 0.05,
+    steerClose: 0.3,
   },
 
   /**

@@ -9,6 +9,10 @@ export interface CarInput {
   handbrake: boolean;
   /** One-shot: put the car back on its wheels. */
   reset: boolean;
+  /** One-shot: toggle straight-mode wings (only has an effect inside a straight zone). */
+  aero: boolean;
+  /** Setting: open the wings automatically whenever allowed. */
+  aeroAuto: boolean;
 }
 
 export const NEUTRAL_INPUT: Readonly<CarInput> = {
@@ -17,4 +21,6 @@ export const NEUTRAL_INPUT: Readonly<CarInput> = {
   steer: 0,
   handbrake: false,
   reset: false,
+  aero: false,
+  aeroAuto: false,
 };

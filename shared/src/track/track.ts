@@ -1,5 +1,6 @@
 import type { SpawnPose } from '../physics/vehicle.ts';
 import { sampleClosedSpline, type TrackSample } from './spline.ts';
+import type { TrackZone } from './zones.ts';
 
 export interface TrackDef {
   id: string;
@@ -16,6 +17,10 @@ export interface TrackDef {
   barrierThickness: number;
   /** Curbs appear where the corner radius is tighter than this (m). */
   curbMaxRadius: number;
+  /** Straights where the wings may open (straight mode), metres from the start line. */
+  aeroZones?: readonly TrackZone[];
+  /** Where the gap to the car ahead is measured for overtake mode (m from the start line). */
+  detectionPoint?: number;
 }
 
 /** Plain-array mesh: renderer-agnostic so the server can share the same code. */

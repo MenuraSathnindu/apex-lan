@@ -39,6 +39,8 @@ export interface CarState {
   wh: number[];
   /** 1 while braking (brake lights). */
   b: 0 | 1;
+  /** Wing opening 0 (corner mode) .. 1 (straight mode), for the wing animation. Absent = 0. */
+  a?: number;
 }
 
 /** A relayed car state: who it belongs to and when the server received it. */

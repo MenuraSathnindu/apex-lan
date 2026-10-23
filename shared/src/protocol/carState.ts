@@ -23,6 +23,7 @@ export function packCarState(v: Vehicle, braking: boolean): CarState {
     v: [r(lv.x, 2), r(lv.y, 2), r(lv.z, 2)],
     wh,
     b: braking ? 1 : 0,
+    a: r(v.aero.blend, 2),
   };
 }
 
@@ -38,7 +39,8 @@ export function isValidCarState(s: unknown): s is CarState {
     finiteArray(c.q, 4, 1.01) &&
     finiteArray(c.v, 3, 1_000) &&
     finiteArray(c.wh, WHEEL_COUNT * 3, 1e7) &&
-    (c.b === 0 || c.b === 1)
+    (c.b === 0 || c.b === 1) &&
+    (c.a === undefined || (typeof c.a === 'number' && c.a >= 0 && c.a <= 1))
   );
 }
 

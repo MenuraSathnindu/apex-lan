@@ -56,6 +56,10 @@ export interface HandlingReport {
   restSagCm: number;
   zeroTo100s: number;
   topSpeedKmh: number;
+  /** Top speed on the combustion engine with the wings open (straight mode). */
+  topSpeedStraightKmh: number;
+  /** Lateral g in a full-lock turn at 250 km/h (corner mode, downforce at work). */
+  fastCornerLateralG: number;
   brake100to0m: number;
   /** Steady full-lock corner at ~70 km/h entry. */
   cornerLateralG: number;
@@ -108,6 +112,13 @@ export function measureHandling(spec: CarSpec = CAR, log?: (phase: string) => vo
   step(r, { throttle: 1 }, SECONDS(45));
   const topSpeedKmh = vehicleSpeed(r.car) * 3.6;
 
+  log?.('top speed, wings open');
+  const open = rig(spec);
+  open.car.inAeroZone = true;
+  step(open, {}, SECONDS(1));
+  step(open, { throttle: 1, aeroAuto: true }, SECONDS(60));
+  const topSpeedStraightKmh = vehicleSpeed(open.car) * 3.6;
+
   log?.('braking');
   // Braking 100-0
   r = rig(spec);
@@ -130,6 +141,16 @@ export function measureHandling(spec: CarSpec = CAR, log?: (phase: string) => vo
     if (upY(r.car) < 0.5) upright = false;
     const v = r.car.body.linvel();
     latG = (Math.abs(r.car.body.angvel().y) * Math.hypot(v.x, v.z)) / 9.81;
+  });
+
+  log?.('fast cornering');
+  r = rig(spec);
+  step(r, {}, SECONDS(1));
+  accelerateTo(r, 250 / 3.6, 60);
+  let fastG = 0;
+  step(r, { throttle: 0.4, steer: 1 }, SECONDS(2), () => {
+    const v = r.car.body.linvel();
+    fastG = (Math.abs(r.car.body.angvel().y) * Math.hypot(v.x, v.z)) / 9.81;
   });
 
   // Handbrake vs no-handbrake slip
@@ -162,6 +183,8 @@ export function measureHandling(spec: CarSpec = CAR, log?: (phase: string) => vo
     restSagCm,
     zeroTo100s,
     topSpeedKmh,
+    topSpeedStraightKmh,
+    fastCornerLateralG: fastG,
     brake100to0m,
     cornerLateralG: latG,
     cornerMaxRollDeg: maxRoll,
