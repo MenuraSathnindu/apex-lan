@@ -15,3 +15,6 @@ client/public/draco/
 # Track source datasets (cloned, see tools/README.md) and generator previews
 tools/data/
 tools/out/
+
+# Host's player database and profile photos
+server/data/

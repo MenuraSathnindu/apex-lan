@@ -3,6 +3,7 @@ export * from './tuning.ts';
 export * from './input.ts';
 export type * from './protocol/messages.ts';
 export * from './protocol/codec.ts';
+export * from './protocol/api.ts';
 export * from './physics/rapier.ts';
 export * from './physics/collisionGroups.ts';
 export * from './physics/world.ts';
