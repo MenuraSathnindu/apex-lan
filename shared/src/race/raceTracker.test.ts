@@ -116,6 +116,30 @@ describe('RaceTracker', () => {
   });
 });
 
+describe('lap validity', () => {
+  it('a respawn jump makes the lap invalid but it still counts', () => {
+    const tracker = new RaceTracker(track, gates, [1], START, 2);
+    // Half a lap, then a respawn: 80 m back in one tick, then carry on to the line.
+    const first = drive(tracker, 1, gridS, 20 + track.length / 2, 30, START);
+    const backS = gridS + 20 + track.length / 2 - 80;
+    const after = drive(tracker, 1, backS, track.length / 2 + 120, 30, first.t + 34);
+    const events = [...first.events, ...after.events];
+    expect(events).toHaveLength(1);
+    expect(events[0]!.valid).toBe(false);
+    expect(tracker.lapsOf(1)[0]!.valid).toBe(false);
+    const row = tracker.standings()[0]!;
+    expect(row.laps).toBe(1);
+    expect(row.bestLap).toBeNull();
+    expect(tracker.fastestLap()).toBeNull();
+  });
+
+  it('clean laps are valid', () => {
+    const tracker = new RaceTracker(track, gates, [1], START, 2);
+    const { events } = drive(tracker, 1, gridS, 20 + track.length * 2 + 5, 30, START);
+    expect(events.map((e) => e.valid)).toEqual([true, true]);
+  });
+});
+
 describe('sector times', () => {
   it('splits each lap into the sectors of the track and keeps every lap', () => {
     const tracker = new RaceTracker(track, gates, [1], START, 2);

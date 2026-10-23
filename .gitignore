@@ -18,3 +18,6 @@ tools/out/
 
 # Host's player database and profile photos
 server/data/
+
+# Plan execution scratch (superpowers)
+.superpowers/

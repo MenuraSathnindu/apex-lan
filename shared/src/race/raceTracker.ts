@@ -32,6 +32,8 @@ export interface LapEvent {
   finished: boolean;
   /** Sector times (ms) of this lap, or null if a split was missed (e.g. a respawn). */
   sectors: number[] | null;
+  /** False if the car jumped (respawn / teleport) during the lap: it counts, but not as a lap time. */
+  valid: boolean;
 }
 
 /** A completed lap as kept for the results / player database. */
@@ -39,6 +41,7 @@ export interface LapRecord {
   lap: number;
   time: number;
   sectors: number[] | null;
+  valid: boolean;
 }
 
 /**
@@ -70,6 +73,8 @@ interface Racer {
   /** Server time this lap crossed each sector line (index 0 = lap start). */
   splits: (number | null)[];
   history: LapRecord[];
+  /** The current lap had an implausible jump. */
+  invalid: boolean;
 }
 
 const wrap = (d: number, len: number) => ((((d + len / 2) % len) + len) % len) - len / 2;
@@ -127,6 +132,7 @@ export class RaceTracker {
         detections: 0,
         splits: this.sectorGates.map((_, k) => (k === 0 ? startsAt : null)),
         history: [],
+        invalid: false,
       });
     }
   }
@@ -145,6 +151,7 @@ export class RaceTracker {
       const dt = Math.max((ts - r.ts) / 1000, 1 / 30);
       const dist = Math.hypot(x - r.x, z - r.z);
       const plausible = dist <= RACE.maxPlausibleSpeed * dt + 5;
+      if (!plausible) r.invalid = true;
       const gate = this.gates[r.nextGate]!;
       if (plausible && crossesGate(gate, r.x, r.z, x, z)) {
         const sector = this.sectorGates.indexOf(r.nextGate);
@@ -186,11 +193,13 @@ export class RaceTracker {
       ? marks.slice(1).map((m, k) => m! - marks[k]!)
       : null;
     r.splits = this.sectorGates.map((_, k) => (k === 0 ? ts : null));
+    const valid = !r.invalid;
+    r.invalid = false;
     r.laps++;
     r.lastLap = time;
-    const personalBest = r.bestLap === null || time < r.bestLap;
+    const personalBest = valid && (r.bestLap === null || time < r.bestLap);
     if (personalBest) r.bestLap = time;
-    const raceBest = this.raceBest === null || time < this.raceBest;
+    const raceBest = personalBest && (this.raceBest === null || time < this.raceBest);
     if (raceBest) this.raceBest = time;
     r.lapStart = ts;
     const finished = r.laps >= this.laps;
@@ -198,8 +207,8 @@ export class RaceTracker {
       r.finishTime = ts - this.startsAt;
       this.firstFinishAt ??= ts;
     }
-    r.history.push({ lap: r.laps, time, sectors });
-    return { id: r.id, lap: r.laps, time, personalBest, raceBest, finished, sectors };
+    r.history.push({ lap: r.laps, time, sectors, valid });
+    return { id: r.id, lap: r.laps, time, personalBest, raceBest, finished, sectors, valid };
   }
 
   /** Every completed lap of a racer. */
