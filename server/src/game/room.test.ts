@@ -71,6 +71,21 @@ describe('Room', () => {
     expect(extra.closed).toBe(true);
   });
 
+  it("relays only car-state fields, under the sender's own id and the server's time", () => {
+    const { room, join } = setup();
+    const a = join('Ann');
+    const b = join('Ben');
+    const aId = a.last('welcome').playerId;
+    const bId = b.last('welcome').playerId;
+    room.handle(a, { t: 'state', s: { ...STATE, id: bId, ts: 9e15, junk: 'x'.repeat(100) } as unknown as CarState });
+    room.update();
+    const car = b.last('snapshot').cars[0]!;
+    expect(car.id).toBe(aId);
+    expect(car.ts).toBeLessThan(9e15);
+    expect(car).not.toHaveProperty('junk');
+    expect(car.p).toEqual(STATE.p);
+  });
+
   it('gives new players the preset livery of their colour and keeps a custom one', () => {
     const { room, join } = setup();
     const a = join('Ann', 3);
@@ -387,6 +402,38 @@ describe('Room with profiles', () => {
     room.handle(twin, { t: 'auth', token: null });
     const me = twin.last('welcome').playerId;
     expect(twin.last('roster').players.find((p) => p.id === me)).toMatchObject({ profileId: null });
+  });
+
+  it('a rejoin re-checks the login and tells the client its profile again', () => {
+    const { room } = setupProfiles();
+    const hello = (sessionId: string | null, token: string) => {
+      const c = new FakeConn();
+      room.handle(c, { t: 'hello', sessionId, name: 'A', color: 0, token });
+      return c;
+    };
+    const a = hello(null, 'token-ann-0123456789');
+    const sid = a.last('welcome').sessionId;
+    room.disconnect(a);
+    const back = hello(sid, 'token-ann-0123456789');
+    expect(back.last('welcome').playerId).toBe(a.last('welcome').playerId);
+    expect(back.last('auth')).toMatchObject({ ok: true, profile: { id: 1 } });
+    // Logged out elsewhere meanwhile: back as a guest.
+    room.disconnect(back);
+    const third = hello(sid, 'token-nobody-0123456789');
+    expect(third.last('roster').players[0]).toMatchObject({ profileId: null });
+  });
+
+  it("keeps a disconnected driver's profile reserved until the rejoin grace runs out", () => {
+    const { room, join, advance } = setupProfiles();
+    const a = join('A', 'token-ann-0123456789');
+    room.disconnect(a);
+    const phone = join('Phone', 'token-ann-0123456789');
+    expect(phone.last('auth')).toMatchObject({ ok: false });
+    advance(REJOIN_GRACE_MS + 1000);
+    room.handle(phone, { t: 'ping', clientTime: 0 });
+    room.update();
+    room.handle(phone, { t: 'auth', token: 'token-ann-0123456789' });
+    expect(phone.last('auth')).toMatchObject({ ok: true, profile: { id: 1 } });
   });
 
   it('keeps the profile name, saves livery edits to the profile, and follows profile updates', () => {

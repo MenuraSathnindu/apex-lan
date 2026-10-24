@@ -53,6 +53,20 @@ export function isValidCarState(s: unknown): s is CarState {
   );
 }
 
+/**
+ * Copies just the CarState fields of a validated state, so extra keys a client adds are never
+ * stored or relayed to other players.
+ */
+export function pickCarState(s: CarState): CarState {
+  const out: CarState = { p: s.p, q: s.q, v: s.v, wh: s.wh, b: s.b };
+  if (s.a !== undefined) out.a = s.a;
+  if (s.e !== undefined) out.e = s.e;
+  if (s.d !== undefined) out.d = s.d;
+  if (s.tw !== undefined) out.tw = s.tw;
+  if (s.pl !== undefined) out.pl = s.pl;
+  return out;
+}
+
 /** Trims, strips control characters and caps length. Empty → null. */
 export function sanitizeName(name: unknown): string | null {
   if (typeof name !== 'string') return null;

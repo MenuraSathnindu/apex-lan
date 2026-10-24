@@ -28,6 +28,7 @@ import {
   isCompound,
   isTyreWearSetting,
   isValidCarState,
+  pickCarState,
   presetLivery,
   sanitizeLivery,
   sanitizeName,
@@ -225,7 +226,7 @@ export class Room {
         break;
       case 'state':
         if (!isValidCarState(msg.s)) return;
-        player.state = msg.s;
+        player.state = pickCarState(msg.s);
         player.stateTs = this.now();
         player.speed = Math.hypot(msg.s.v[0], msg.s.v[2]);
         if (this.jumpStarts && this.race.phase === 'countdown' && this.jumpStarts.onState(player.id, msg.s.p[0], msg.s.p[2], player.stateTs)) {
@@ -361,7 +362,7 @@ export class Room {
       if (!p.conn || !p.state || p.stateTs === p.sentTs) continue;
       // Spectators have no car in a session (even if a client sends states anyway).
       if (!p.entrant && this.race.phase !== 'lobby') continue;
-      cars.push({ id: p.id, ts: p.stateTs, ...p.state });
+      cars.push({ ...p.state, id: p.id, ts: p.stateTs });
       p.sentTs = p.stateTs;
     }
     if (cars.length) this.broadcast({ t: 'snapshot', cars });
@@ -386,6 +387,14 @@ export class Room {
       player.conn = conn;
       player.lastSeen = now;
       this.byConn.set(conn, player);
+      // The client forgot its login when it dropped: check the token again (it may have been
+      // revoked meanwhile) and tell it who it is.
+      if (player.profile || msg.token) {
+        const was = player.profile;
+        player.profile = null;
+        if (msg.token) this.authenticate(player, msg.token, conn);
+        else if (was) conn.send({ t: 'auth', ok: true, profile: null });
+      }
       this.log(`${player.name} (#${player.id}) rejoined`);
     } else {
       const slot = this.freeSlot();
@@ -451,7 +460,8 @@ export class Room {
     }
     const profile = typeof token === 'string' && this.profiles ? this.profiles.byToken(token) : null;
     if (!profile) return reply(false, 'unknown login — log in again');
-    if ([...this.players.values()].some((p) => p !== player && p.conn && p.profile?.id === profile.id)) {
+    // Includes players who dropped and may still rejoin, so a profile never drives two cars.
+    if ([...this.players.values()].some((p) => p !== player && p.profile?.id === profile.id)) {
       return reply(false, `${profile.name} is already driving in this room`);
     }
     player.profile = profile;
