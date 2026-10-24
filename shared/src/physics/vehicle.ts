@@ -172,7 +172,9 @@ export function stepVehicle(v: Vehicle, input: CarInput, dt: number): void {
   let driveForce = 0;
   let brake = 0;
 
-  const ersPower = stepErs(v.ers, spec, { throttle, brake: brakePedal, boost: input.boost, speed }, dt);
+  // No deploying on a speed limiter (pit lane): the limiter would waste the energy.
+  const boost = input.boost && v.speedLimit === Infinity;
+  const ersPower = stepErs(v.ers, spec, { throttle, brake: brakePedal, boost, speed }, dt);
   if (throttle > 0) {
     if (speed < -eng.reverseEngageSpeed) brake = throttle; // rolling backwards: throttle brakes first
     else {

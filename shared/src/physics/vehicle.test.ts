@@ -150,4 +150,15 @@ describe('pit lane speed limiter', () => {
     run({ throttle: 1 }, 3);
     expect(vehicleSpeed(car)).toBeLessThanOrEqual(CAR.pit.speedLimit + 1);
   });
+
+  it('holding boost on the limiter spends no battery', () => {
+    const { car, run } = setup();
+    run({}, 1);
+    car.speedLimit = CAR.pit.speedLimit;
+    run({ throttle: 1 }, 8);
+    const charge = car.ers.charge;
+    run({ throttle: 1, boost: true }, 5);
+    expect(car.ers.lapDeployed).toBe(0);
+    expect(car.ers.charge).toBeGreaterThanOrEqual(charge);
+  });
 });
