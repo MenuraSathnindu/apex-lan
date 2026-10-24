@@ -28,6 +28,9 @@ phase. If a decision changes, update that doc in the same change.
 > **Phase 13 broadcast done (2026-10-23)**: start lights + jump starts, stewards (time penalties, track limits),
 > timing tower, live sectors, pit lane limiter + tyre stops, chequered flag, replays, podium scene
 > (spec `docs/superpowers/specs/2026-10-23-broadcast-design.md`).
+> **Phase 14 open-source docs started (2026-10-24)**: MIT `LICENSE` (code only; track data keeps LGPL-3.0/MIT),
+> README, CREDITS, CONTRIBUTING, Code of Conduct, SECURITY, issue/PR templates, CI (Linux + Windows), `lint:marks`, LFS rules.
+> Left for 14: history scrub of early trademark mentions (needs the owner's go-ahead + force-push), screenshots (`docs/media/SHOTS.md`), release/changelog.
 > **Next: Phase 8 — foundations** (refactors R2–R7/R13,
 > binary codec, trademark lint). Phase 6 leftovers: visual body roll, real tree models.
 > Update this line when a phase's exit criteria are met.
@@ -40,7 +43,8 @@ no series names/abbreviations, no real team/driver/car-model names, no logos, li
 - Regulation concepts are fine, but use our own UI wording. Aero modes are `corner` / `straight` in code.
 - Only CC0/CC-BY assets whose subject is not a real trademarked product. Third-party GLBs of real cars are out.
 - `npm run lint:marks` (banned-term list lives in `scripts/checkMarks.mjs`) must pass; it runs in `npm test` and CI.
-  If you need to mention a real name (e.g. a licence credit), stop and ask.
+  If you need to mention a real name (e.g. a licence credit), stop and ask. Agreed exceptions are line-level entries in its
+  `ALLOW` map (the README disclaimer, the dataset link in credits), nowhere else.
 
 ## Stack
 - TypeScript everywhere (strict). npm workspaces monorepo.

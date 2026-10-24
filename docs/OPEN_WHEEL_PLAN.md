@@ -214,6 +214,11 @@ Do R1–R7 and R13 in **p8**, R8–R10 and R12 right before the feature that nee
   two machines to within one frame of server time.
 
 ### p14 — Open-source readiness
+> **Status (2026-10-24):** MIT chosen; LICENSE, README (with the owner's disclaimer), CREDITS.md, CONTRIBUTING,
+> CODE_OF_CONDUCT, SECURITY, issue/PR templates, CI (Linux + Windows: typecheck, lint:marks, tests, build), `.gitattributes`
+> with LFS rules done. Open: history scrub (early commits name a real car brand; never the model file itself), screenshots,
+> Dependabot, track regeneration check in CI, release + changelog.
+
 - **Legal:** `LICENSE` for code (pick MIT or Apache-2.0 — decision needed), asset licences in
   `client/public/CREDITS.md`, `docs/ASSETS.md`; `NOTICE`/`DISCLAIMER.md`: *unofficial fan-made
   project, not affiliated with or endorsed by any racing series, team, driver or governing body.*
