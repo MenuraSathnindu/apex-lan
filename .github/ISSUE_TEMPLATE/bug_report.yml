@@ -1,0 +1,52 @@
+name: Bug report
+description: Something doesn't work or looks wrong.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Host with `npm run host`, 3 players
+        2. Pick a track, start a race
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options:
+        - Host's browser (localhost)
+        - A friend's browser (LAN)
+        - Server / terminal
+        - Not sure
+  - type: input
+    id: track
+    attributes:
+      label: Track and mode
+      placeholder: e.g. Monza, championship qualifying
+  - type: input
+    id: env
+    attributes:
+      label: Browser, OS and graphics preset
+      placeholder: e.g. Edge 130 on Windows 11, Medium
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or version
+      description: Output of `git rev-parse --short HEAD`.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console or server logs
+      description: Browser console (F12) and terminal output, if any.
+      render: text

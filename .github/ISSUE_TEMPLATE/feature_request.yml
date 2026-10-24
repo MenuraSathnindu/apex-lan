@@ -1,0 +1,24 @@
+name: Feature request
+description: An idea to make game night better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like?
+      description: Describe the idea and the moment in a race where you'd want it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you've considered or seen elsewhere?
+      description: Describe it in your own words; please don't name real series, teams or drivers.
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Checks
+      options:
+        - label: It works on a LAN without internet and keeps the game installable with `npm install` alone.
+        - label: It doesn't need any real trademark (series, team, driver, sponsor or car names, logos or liveries).
+          required: true

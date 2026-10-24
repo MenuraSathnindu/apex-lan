@@ -1,0 +1,47 @@
+name: New track
+description: Request or contribute a circuit layout.
+labels: [track]
+body:
+  - type: input
+    id: place
+    attributes:
+      label: Place name
+      description: City/area and country only, e.g. "Imola, Italy". Not the circuit's or event's name.
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Layout source
+      options:
+        - TUMFTM racetrack-database (LGPL-3.0)
+        - Tomislav Bacinger's circuits GeoJSON (MIT)
+        - Hand-made / original layout
+        - Other open dataset (say which and its licence below)
+    validations:
+      required: true
+  - type: input
+    id: dataset_id
+    attributes:
+      label: Dataset file or id
+      placeholder: e.g. tracks/Imola.csv or it-1953
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type
+      options:
+        - Permanent circuit
+        - Street circuit (walls close to the road)
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Start line, direction, pit lane side, anything the generator might get wrong.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: If you're opening a PR with it
+      options:
+        - label: I checked `tools/out/<id>.svg` (start line and direction).
+        - label: "`npm run tracks:check -- <id>` completes a lap."
+        - label: The data's licence allows redistribution and is credited in CREDITS.md.
