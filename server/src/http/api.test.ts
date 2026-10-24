@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -189,5 +189,40 @@ describe('championship history', () => {
     expect(list).toEqual([expect.objectContaining({ id: v.id, name: 'Old cup', status: 'setup', rounds: 1 })]);
     expect(await (await fetch(`${base}/api/championships/${v.id}`)).json()).toMatchObject({ id: v.id, rounds: [{ trackId: 'monza' }] });
     expect((await fetch(`${base}/api/championships/9999`)).status).toBe(404);
+  });
+});
+
+describe('API robustness', () => {
+  it('two profiles created with the same name at once: one 201, one 409', async () => {
+    const body = { name: 'Twin', tag: 'TWN', pin: '1234' };
+    const statuses = (await Promise.all([post('/api/profiles', body), post('/api/profiles', body)])).map((r) => r.status);
+    expect(statuses.sort()).toEqual([201, 409]);
+  });
+
+  it('a photo that cannot be read does not take the server down', async () => {
+    // A directory with a photo's name: exists, but opening it as a file fails (like a photo deleted mid-request).
+    mkdirSync(join(photosDir, 'ab'.repeat(16) + '.webp'));
+    await fetch(`${base}/photos/${'ab'.repeat(16)}.webp`).then((r) => r.arrayBuffer()).catch(() => null);
+    expect((await fetch(`${base}/api/profiles`)).status).toBe(200);
+  });
+
+  it('PIN guesses sent in parallel are throttled too', async () => {
+    const own = new PlayerDb(':memory:');
+    const api = createApi({ db: own, photosDir, pinRounds: 4, now: () => 5_000_000 });
+    const srv = createServer(async (req, res) => {
+      if (!(await api.handle(req, res))) res.writeHead(404).end();
+    });
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${(srv.address() as AddressInfo).port}/api/login`;
+    const guess = (pin: string) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Eve', pin }) });
+    try {
+      await fetch(url.replace('/login', '/profiles'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Eve', tag: 'EVE', pin: '4321' }) });
+      const statuses = (await Promise.all(Array.from({ length: 20 }, (_, i) => guess(String(1000 + i))))).map((r) => r.status);
+      expect(statuses.filter((s) => s === 401).length).toBeLessThanOrEqual(5);
+      expect((await guess('4321')).status).toBe(429);
+    } finally {
+      srv.close();
+      own.close();
+    }
   });
 });

@@ -56,12 +56,22 @@ export function createApi(opts: ApiOptions): Router {
     if (p) opts.onProfileChanged?.(PlayerDb.summary(p));
     return p!;
   };
+  /**
+   * Counts the attempt as a failure up front, so guesses sent in parallel are limited too;
+   * returns a function that forgets it again when the PIN was right.
+   */
   const throttle = (ctx: RequestContext) => {
     const ip = ctx.req.socket.remoteAddress ?? '?';
     const recent = (failures.get(ip) ?? []).filter((t) => now() - t < LOGIN_LIMIT.windowMs);
     failures.set(ip, recent);
     if (recent.length >= LOGIN_LIMIT.attempts) throw new HttpError(429, 'too many attempts — wait a minute');
-    return () => recent.push(now());
+    const at = now();
+    recent.push(at);
+    return () => {
+      const list = failures.get(ip);
+      const i = list ? list.indexOf(at) : -1;
+      if (i >= 0) list!.splice(i, 1);
+    };
   };
 
   const router = new Router();
@@ -75,20 +85,21 @@ export function createApi(opts: ApiOptions): Router {
     if (!isPin(body.pin)) throw new HttpError(400, 'PIN must be 4 digits');
     const livery = sanitizeLivery(body.livery, presetLivery(0));
     if (db.profileByName(name)) throw new HttpError(409, 'that name is taken');
-    const profile = db.createProfile(name, tag, livery, await bcrypt.hash(body.pin, rounds), now());
+    const pinHash = await bcrypt.hash(body.pin, rounds);
+    // Checked again after the hash: someone may have taken the name meanwhile.
+    if (db.profileByName(name)) throw new HttpError(409, 'that name is taken');
+    const profile = db.createProfile(name, tag, livery, pinHash, now());
     const res: AuthResponse = { profile: PlayerDb.summary(profile), token: db.issueToken(profile.id, now()) };
     sendJson(ctx.res, 201, res);
   });
 
   router.on('POST', /^\/api\/login$/, async (ctx) => {
-    const fail = throttle(ctx);
+    const succeeded = throttle(ctx);
     const body = await readJson(ctx.req);
     const profile = typeof body.name === 'string' ? db.profileByName(body.name) : null;
     const ok = isPin(body.pin) && (await bcrypt.compare(body.pin, profile?.pinHash ?? dummyHash));
-    if (!profile || !ok) {
-      fail();
-      throw new HttpError(401, 'wrong name or PIN');
-    }
+    if (!profile || !ok) throw new HttpError(401, 'wrong name or PIN');
+    succeeded();
     const res: AuthResponse = { profile: PlayerDb.summary(profile), token: db.issueToken(profile.id, now()) };
     sendJson(ctx.res, 200, res);
   });
@@ -160,7 +171,10 @@ export function createApi(opts: ApiOptions): Router {
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'",
     });
-    createReadStream(path).pipe(ctx.res);
+    // The file can vanish between the check and the open (a new photo replaces it): end the reply.
+    createReadStream(path)
+      .on('error', () => ctx.res.destroy())
+      .pipe(ctx.res);
   });
 
   return router;
