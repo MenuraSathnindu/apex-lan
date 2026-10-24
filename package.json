@@ -1,6 +1,7 @@
 {
   "name": "apex-lan",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "shared",
