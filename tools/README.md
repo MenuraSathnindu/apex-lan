@@ -14,10 +14,10 @@ Clone both datasets into `tools/data/` (git-ignored):
 
 ```sh
 git clone --depth 1 https://github.com/TUMFTM/racetrack-database tools/data/racetrack-database
-git clone --depth 1 <Tomislav Bacinger's circuits GeoJSON repository on GitHub> tools/data/circuits
+git clone --depth 1 https://github.com/bacinger/f1-circuits tools/data/circuits
 ```
 
-The second repository lives under `github.com/bacinger`. Any folder name works: the script
+Any folder name works: the script
 looks for the folder that contains `circuits/`.
 
 | Dataset | Licence | What we use |

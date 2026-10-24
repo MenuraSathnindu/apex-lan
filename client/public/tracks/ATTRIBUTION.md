@@ -7,8 +7,8 @@ its source in its `source` block.
 
 | Dataset | Licence (text next to this file) | Used for |
 |---|---|---|
-| **TUMFTM racetrack-database**, Chair of Automotive Technology, Technical University of Munich, <https://github.com/TUMFTM/racetrack-database>. Centrelines originally from © OpenStreetMap contributors. | LGPL-3.0, `LICENSE-TUMFTM-racetrack-database.txt` | Centreline and track widths where available |
-| **Circuits GeoJSON dataset** by Tomislav Bacinger, <https://github.com/bacinger> | MIT, `LICENSE-bacinger-circuits.txt` | Geographic reference, start/finish line, published lengths, and the centreline of circuits not in the TUMFTM set |
+| **TUMFTM racetrack-database**, Chair of Automotive Technology, Technical University of Munich, <https://github.com/TUMFTM/racetrack-database>. Centrelines originally from © OpenStreetMap contributors (ODbL-1.0, <https://www.openstreetmap.org/copyright>). | LGPL-3.0, `LICENSE-TUMFTM-racetrack-database.txt` | Centreline and track widths where available |
+| **Circuits GeoJSON dataset** by Tomislav Bacinger, <https://github.com/bacinger/f1-circuits> | MIT, `LICENSE-bacinger-circuits.txt` | Geographic reference, start/finish line, published lengths, and the centreline of circuits not in the TUMFTM set |
 
 Track names are places (city/area and country), used only to say where a layout is. This
 project is not affiliated with any circuit, racing series or organiser.

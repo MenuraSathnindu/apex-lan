@@ -1,5 +1,8 @@
 # Art assets
 
+Every third-party asset, dataset and library, with author, licence and link:
+[`CREDITS.md`](../CREDITS.md).
+
 The game runs without any of these files: each one has a procedural fallback (sky, flat
 textures, built-in car), and the browser console says which file is missing. With them, it
 looks realistic.
