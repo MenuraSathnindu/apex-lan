@@ -149,13 +149,15 @@ export class RaceTracker {
     readonly startsAt: number,
     readonly laps: number,
   ) {
-    // Each sector line maps to the gate nearest to it (sector 1 starts at the line, gate 0).
-    this.sectorGates = (track.def.sectors.length ? track.def.sectors : [0]).map((s, k) => {
-      if (k === 0) return 0;
-      let best = 1;
-      for (let g = 1; g < gates.length; g++) if (Math.abs(gates[g]!.s - s) < Math.abs(gates[best]!.s - s)) best = g;
-      return best;
-    });
+    // Each sector line maps to the gate nearest to it (sector 1 starts at the line, gate 0),
+    // after the previous sector's gate so that two close lines never share one.
+    this.sectorGates = [];
+    for (const [k, s] of (track.def.sectors.length ? track.def.sectors : [0]).entries()) {
+      const prev = this.sectorGates[k - 1] ?? 0;
+      let best = Math.min(prev + 1, gates.length - 1);
+      for (let g = best; g < gates.length; g++) if (Math.abs(gates[g]!.s - s) < Math.abs(gates[best]!.s - s)) best = g;
+      this.sectorGates.push(k === 0 ? 0 : best);
+    }
     const dp = track.def.detectionPoint;
     this.detectionGate = dp === undefined ? null : gateAtDistance(track, dp);
     for (const id of participants) {

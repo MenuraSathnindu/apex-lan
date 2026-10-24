@@ -153,6 +153,17 @@ describe('sector times', () => {
     expect(tracker.lapsOf(1).map((l) => l.lap)).toEqual([1, 2]);
     expect(tracker.fastestLap()).toEqual({ id: 1, time: Math.min(...events.map((e) => e.time)) });
   });
+
+  it('sector lines closer together than the gate spacing still get their own gates', () => {
+    const close = buildTrack({ ...APEX_PARK, sectors: [0, 400, 420] });
+    const tracker = new RaceTracker(close, buildCheckpoints(close), [1], START, 2);
+    const { events } = drive(tracker, 1, gridS, 20 + track.length * 2 + 5, 30, START);
+    expect(events).toHaveLength(2);
+    for (const e of events) {
+      expect(e.sectors).toHaveLength(3);
+      expect(e.sectors!.every((s) => s > 0)).toBe(true);
+    }
+  });
 });
 
 describe('overtake detection point', () => {
