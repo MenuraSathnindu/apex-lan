@@ -680,7 +680,10 @@ export class Room {
         totalMs: classifiedTime(s),
       })),
       fastestLapId: tracker.fastestLap()?.id ?? null,
-      lapsOf: (id) => tracker.lapsOf(id),
+      // In qualifying a lap is only valid if it counted for the session (not after the flag).
+      lapsOf: qualifying
+        ? (id) => tracker.lapsOf(id).map((l) => ({ ...l, valid: l.valid && run.qualiLaps.some((q) => q.id === id && q.lap === l.lap) }))
+        : (id) => tracker.lapsOf(id),
     });
   }
 

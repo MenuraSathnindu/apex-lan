@@ -62,6 +62,11 @@ describe('Room sessions', () => {
     const ids = done[0]!.classification;
     expect(ids.find((r) => r.playerId === idOf(b))!.bestLapMs).not.toBeNull();
     expect(ids.find((r) => r.playerId === idOf(a))!.bestLapMs).toBeNull();
+    // Ann's laps after the flag didn't count, so they're not valid laps for career bests either.
+    const annLaps = done[0]!.lapsOf(idOf(a));
+    expect(annLaps.length).toBeGreaterThan(0);
+    expect(annLaps.every((l) => !l.valid)).toBe(true);
+    expect(done[0]!.lapsOf(idOf(b)).some((l) => l.valid)).toBe(true);
     void wait;
   });
 
